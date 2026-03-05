@@ -52,6 +52,18 @@ class QueryAgent:
         """
         tables_str = "\n".join(f'  - "{t}"' for t in available_tables)
 
+        # Deterministic handlers for high-priority user intents.
+        # This guarantees predictable output for common asks like:
+        # - "Create a dashboard of leads"
+        # - "Show me a report table of all leads with name email and status"
+        deterministic = self._deterministic_plan_for_prompt(
+            user_prompt=user_prompt,
+            available_tables=available_tables,
+            table_schemas=table_schemas,
+        )
+        if deterministic:
+            return self._validate_plan(deterministic, available_tables, user_prompt)
+
         # Build the schema block — the most important data-accuracy guard
         if table_schemas:
             schema_lines = []
@@ -181,6 +193,290 @@ Valid output_type values:
             return self._validate_plan(fb, available_tables, user_prompt)
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Deterministic planners for requirement-critical prompts
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _deterministic_plan_for_prompt(
+        self,
+        user_prompt: str,
+        available_tables: list[str],
+        table_schemas: dict[str, list[str]] | None,
+    ) -> dict | None:
+        prompt = (user_prompt or "").lower()
+
+        is_dashboard_req = bool(
+            re.search(r"\b(dashboard|overview|complete|full|entire)\b", prompt)
+        )
+        is_table_req = bool(re.search(r"\b(table|report|list|rows?)\b", prompt))
+        is_leads_req = "lead" in prompt
+
+        if is_table_req and is_leads_req:
+            return self._build_leads_table_plan(available_tables, table_schemas)
+
+        if is_dashboard_req and is_leads_req:
+            return self._build_leads_dashboard_plan(available_tables, table_schemas)
+
+        return None
+
+    def _build_leads_table_plan(
+        self,
+        tables: list[str],
+        table_schemas: dict[str, list[str]] | None,
+    ) -> dict:
+        t_leads = self._pick_best_table(tables, ["leads"], ["lead"])
+        cols = (table_schemas or {}).get(t_leads, [])
+
+        # Prioritize explicit user-requested fields: name, email, status.
+        selected = []
+        name_col = self._choose_column(cols, ["full name", "name", "first name", "last name"])
+        email_col = self._choose_column(cols, ["email", "email address"])
+        status_col = self._choose_column(cols, ["lead status", "status", "stage"])
+
+        for c in (name_col, email_col, status_col):
+            if c and c not in selected:
+                selected.append(c)
+
+        # Add common lead context columns if present.
+        source_col = self._choose_column(cols, ["lead source", "source"])
+        created_col = self._choose_column(cols, ["created time", "created", "created date"])
+        for c in (source_col, created_col):
+            if c and c not in selected:
+                selected.append(c)
+
+        if not selected:
+            if cols:
+                selected = cols[:6]
+            else:
+                selected = ["First Name", "Last Name", "Email", "Lead Status"]
+
+        select_sql = ", ".join(f'"{c}"' for c in selected)
+        order_col = created_col or selected[0]
+
+        return {
+            "intent": "table",
+            "title": "Leads Report",
+            "components": [
+                {
+                    "id": "leads_report_table",
+                    "label": "Leads Report",
+                    "output_type": "table",
+                    "sql": (
+                        f"SELECT {select_sql} "
+                        f"FROM \"{t_leads}\" "
+                        f"ORDER BY \"{order_col}\" DESC LIMIT 50"
+                    ),
+                    "description": "Lead records with requested fields",
+                }
+            ],
+        }
+
+    def _build_leads_dashboard_plan(
+        self,
+        tables: list[str],
+        table_schemas: dict[str, list[str]] | None,
+    ) -> dict:
+        t_leads = self._pick_best_table(tables, ["leads"], ["lead"])
+        cols = (table_schemas or {}).get(t_leads, [])
+
+        status_col = self._choose_column(cols, ["lead status", "status", "stage"])
+        source_col = self._choose_column(cols, ["lead source", "source"])
+        created_col = self._choose_column(cols, ["created time", "created", "created date"])
+        owner_col = self._choose_column(cols, ["lead owner", "owner"])
+        city_col = self._choose_column(cols, ["city"])
+        email_col = self._choose_column(cols, ["email", "email address"])
+        name_col = self._choose_column(cols, ["full name", "name", "first name", "last name"])
+
+        table_fields = []
+        for c in (name_col, email_col, status_col, source_col, created_col):
+            if c and c not in table_fields:
+                table_fields.append(c)
+        if not table_fields:
+            table_fields = cols[:6] if cols else ["First Name", "Last Name", "Email", "Lead Status"]
+
+        components = [
+            {
+                "id": "total_leads",
+                "label": "Total Leads",
+                "output_type": "kpi",
+                "sql": f'SELECT COUNT(*) AS "Total Leads" FROM "{t_leads}"',
+                "description": "Total number of leads",
+            },
+            {
+                "id": "contactable_leads",
+                "label": "Contactable Leads",
+                "output_type": "kpi",
+                "sql": (
+                    f'SELECT COUNT("{email_col}") AS "Contactable Leads" FROM "{t_leads}"'
+                    if email_col
+                    else f'SELECT COUNT(*) AS "Contactable Leads" FROM "{t_leads}"'
+                ),
+                "description": "Leads with email available",
+            },
+            {
+                "id": "lead_status_count",
+                "label": "Lead Statuses",
+                "output_type": "kpi",
+                "sql": (
+                    f'SELECT COUNT(DISTINCT "{status_col}") AS "Lead Statuses" FROM "{t_leads}"'
+                    if status_col
+                    else f'SELECT COUNT(*) AS "Lead Statuses" FROM "{t_leads}"'
+                ),
+                "description": "Number of distinct lead statuses",
+            },
+            {
+                "id": "lead_source_count",
+                "label": "Lead Sources",
+                "output_type": "kpi",
+                "sql": (
+                    f'SELECT COUNT(DISTINCT "{source_col}") AS "Lead Sources" FROM "{t_leads}"'
+                    if source_col
+                    else f'SELECT COUNT(*) AS "Lead Sources" FROM "{t_leads}"'
+                ),
+                "description": "Number of distinct lead sources",
+            },
+            {
+                "id": "leads_by_status",
+                "label": "Leads by Status",
+                "output_type": "pie",
+                "sql": (
+                    f'SELECT "{status_col}", COUNT(*) AS "Count" '
+                    f'FROM "{t_leads}" '
+                    f'GROUP BY "{status_col}" '
+                    f'ORDER BY "Count" DESC'
+                    if status_col
+                    else (
+                        f'SELECT "{source_col}", COUNT(*) AS "Count" '
+                        f'FROM "{t_leads}" '
+                        f'GROUP BY "{source_col}" '
+                        f'ORDER BY "Count" DESC'
+                        if source_col
+                        else f'SELECT COUNT(*) AS "Count" FROM "{t_leads}"'
+                    )
+                ),
+                "description": "Lead distribution by status",
+            },
+            {
+                "id": "leads_by_source",
+                "label": "Leads by Source",
+                "output_type": "bar",
+                "sql": (
+                    f'SELECT "{source_col}", COUNT(*) AS "Count" '
+                    f'FROM "{t_leads}" '
+                    f'GROUP BY "{source_col}" '
+                    f'ORDER BY "Count" DESC'
+                    if source_col
+                    else (
+                        f'SELECT "{status_col}", COUNT(*) AS "Count" '
+                        f'FROM "{t_leads}" '
+                        f'GROUP BY "{status_col}" '
+                        f'ORDER BY "Count" DESC'
+                        if status_col
+                        else f'SELECT COUNT(*) AS "Count" FROM "{t_leads}"'
+                    )
+                ),
+                "description": "Lead source breakdown",
+            },
+            {
+                "id": "leads_by_owner",
+                "label": "Leads by Owner",
+                "output_type": "horizontalBar",
+                "sql": (
+                    f'SELECT "{owner_col}", COUNT(*) AS "Count" '
+                    f'FROM "{t_leads}" '
+                    f'GROUP BY "{owner_col}" '
+                    f'ORDER BY "Count" DESC'
+                    if owner_col
+                    else (
+                        f'SELECT "{source_col}", COUNT(*) AS "Count" '
+                        f'FROM "{t_leads}" '
+                        f'GROUP BY "{source_col}" '
+                        f'ORDER BY "Count" DESC'
+                        if source_col
+                        else f'SELECT COUNT(*) AS "Count" FROM "{t_leads}"'
+                    )
+                ),
+                "description": "Lead ownership distribution",
+            },
+            {
+                "id": "leads_over_time",
+                "label": "Leads Created Over Time",
+                "output_type": "line",
+                "sql": (
+                    f'SELECT DATE_FORMAT("{created_col}", \'%Y-%m\') AS "Month", COUNT(*) AS "Count" '
+                    f'FROM "{t_leads}" '
+                    f'GROUP BY "Month" '
+                    f'ORDER BY "Month" ASC'
+                    if created_col
+                    else (
+                        f'SELECT "{status_col}", COUNT(*) AS "Count" '
+                        f'FROM "{t_leads}" '
+                        f'GROUP BY "{status_col}" '
+                        f'ORDER BY "Count" DESC'
+                        if status_col
+                        else f'SELECT COUNT(*) AS "Count" FROM "{t_leads}"'
+                    )
+                ),
+                "description": "Lead creation trend",
+            },
+            {
+                "id": "recent_leads",
+                "label": "Recent Leads",
+                "output_type": "table",
+                "sql": (
+                    f'SELECT {", ".join(f"\"{c}\"" for c in table_fields)} '
+                    f'FROM "{t_leads}" '
+                    f'ORDER BY "{created_col or table_fields[0]}" DESC LIMIT 30'
+                ),
+                "description": "Recent lead records",
+            },
+        ]
+
+        # Optional extra component for richer dashboard diversity.
+        if city_col:
+            components.insert(8, {
+                "id": "leads_by_city",
+                "label": "Leads by City",
+                "output_type": "area",
+                "sql": (
+                    f'SELECT "{city_col}", COUNT(*) AS "Count" '
+                    f'FROM "{t_leads}" '
+                    f'GROUP BY "{city_col}" '
+                    f'ORDER BY "Count" DESC'
+                ),
+                "description": "Geographic distribution of leads",
+            })
+
+        return {
+            "intent": "dashboard",
+            "title": "Leads Dashboard",
+            "components": components,
+        }
+
+    def _choose_column(self, columns: list[str], candidates: list[str]) -> str | None:
+        if not columns:
+            return None
+
+        # Exact normalized match first
+        normalized = {self._norm_col(c): c for c in columns}
+        for cand in candidates:
+            key = self._norm_col(cand)
+            if key in normalized:
+                return normalized[key]
+
+        # Soft contains match next
+        for cand in candidates:
+            needle = self._norm_col(cand)
+            for col in columns:
+                if needle and needle in self._norm_col(col):
+                    return col
+
+        return None
+
+    @staticmethod
+    def _norm_col(name: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", (name or "").lower())
+
+    # ─────────────────────────────────────────────────────────────────────────
     def _parse_json(self, text: str) -> dict:
         """Extract and parse JSON robustly, including light repair for common LLM formatting issues."""
         raw = (text or "").strip()
@@ -307,9 +603,9 @@ Valid output_type values:
         if not plan.get("title"):
             plan["title"] = "Analytics Dashboard"
 
-        return self._postprocess_plan(plan, user_prompt)
+        return self._postprocess_plan(plan, user_prompt, available_tables)
 
-    def _postprocess_plan(self, plan: dict, user_prompt: str) -> dict:
+    def _postprocess_plan(self, plan: dict, user_prompt: str, available_tables: list[str]) -> dict:
         """
         Final quality pass:
           1) Dashboard defaults prefer useful/core chart families.
@@ -322,11 +618,41 @@ Valid output_type values:
         requested_types = self._requested_output_types(user_prompt)
         prompt_lower = (user_prompt or "").lower()
 
+        is_dashboard_prompt = self._is_dashboard_request(prompt_lower)
+        is_single_chart_prompt = self._is_single_chart_request(prompt_lower)
+
+        # Force chart intent for explicit single-chart asks.
+        if is_single_chart_prompt and not is_dashboard_prompt:
+            plan["intent"] = "chart"
+            if requested_types:
+                filtered = [c for c in components if c.get("output_type") in requested_types]
+                if filtered:
+                    plan["components"] = [filtered[0]]
+                else:
+                    components[0]["output_type"] = next(iter(requested_types))
+                    plan["components"] = [components[0]]
+            else:
+                plan["components"] = [components[0]]
+            return plan
+
         is_dashboard_intent = plan.get("intent") == "dashboard"
         looks_full_dashboard_prompt = any(
             token in prompt_lower
             for token in ("dashboard", "full", "complete", "overview", "entire")
         )
+
+        # Global rule: dashboard prompts must always return a rich dashboard.
+        if is_dashboard_prompt:
+            plan["intent"] = "dashboard"
+            if not self._is_rich_dashboard(plan.get("components", [])):
+                print("[QueryAgent] Dashboard prompt under-filled — enforcing rich fallback dashboard.")
+                fallback = self._fallback_plan("dashboard overview", available_tables)
+                plan["components"] = fallback.get("components", [])
+                if not plan.get("title") or plan.get("title") == "Analytics Dashboard":
+                    plan["title"] = fallback.get("title", "Analytics Dashboard")
+            components = plan.get("components", [])
+            is_dashboard_intent = True
+            looks_full_dashboard_prompt = True
 
         # Non-dashboard + explicit chart request: keep only what user asked for.
         if requested_types and (not is_dashboard_intent) and (not looks_full_dashboard_prompt):
@@ -394,6 +720,36 @@ Valid output_type values:
 
         return plan
 
+    def _is_dashboard_request(self, prompt: str) -> bool:
+        if not prompt:
+            return False
+        return bool(re.search(r"\b(dashboard|overview|complete|full|entire|all metrics|summary dashboard)\b", prompt))
+
+    def _is_single_chart_request(self, prompt: str) -> bool:
+        if not prompt:
+            return False
+
+        explicit_single = bool(
+            re.search(r"\b(only\s+one|single|just\s+one|one)\s+(chart|graph|plot)\b", prompt)
+        )
+        if explicit_single:
+            return True
+
+        has_chart_word = bool(re.search(r"\b(chart|graph|plot|pie\s*chart|bar\s*chart|line\s*chart|funnel)\b", prompt))
+        has_multi_or_dash = bool(re.search(r"\b(charts|graphs|dashboard|overview|kpis?|table|summary|all)\b", prompt))
+        return has_chart_word and not has_multi_or_dash
+
+    def _is_rich_dashboard(self, components: list[dict]) -> bool:
+        if not components or len(components) < 7:
+            return False
+
+        kpi_types = {"kpi", "numeric", "gauge", "dial", "bullet"}
+        kpi_count = sum(1 for c in components if c.get("output_type") in kpi_types)
+        has_table = any(c.get("output_type") in {"table", "pivot", "report"} for c in components)
+        unique_types = {c.get("output_type") for c in components if c.get("output_type")}
+
+        return kpi_count >= 3 and has_table and len(unique_types) >= 4
+
     def _sanitize_sql_for_zoho(self, sql: str) -> str:
         """Remove runtime-date predicates that commonly fail on Zoho SQL dialect."""
         if not sql:
@@ -453,6 +809,115 @@ Valid output_type values:
         t_deals    = self._pick_best_table(tables, ["deals"], ["deal", "notes"])
         t_contacts = self._pick_best_table(tables, ["contacts"], ["contact", "notes"])
         t_accounts = self._pick_best_table(tables, ["accounts"], ["account", "notes"])
+
+        # Dashboard prompts should never collapse into a single chart.
+        if self._is_dashboard_request(q):
+            return {
+                "intent": "dashboard",
+                "title":  "CRM Overview",
+                "components": [
+                    {
+                        "id":          "total_leads",
+                        "label":       "Total Leads",
+                        "output_type": "kpi",
+                        "sql":         f'SELECT COUNT(*) AS "Total Leads" FROM "{t_leads}"',
+                        "description": "Total number of leads",
+                    },
+                    {
+                        "id":          "total_deals",
+                        "label":       "Total Deals",
+                        "output_type": "kpi",
+                        "sql":         f'SELECT COUNT(*) AS "Total Deals" FROM "{t_deals}"',
+                        "description": "Total number of deals",
+                    },
+                    {
+                        "id":          "total_contacts",
+                        "label":       "Total Contacts",
+                        "output_type": "kpi",
+                        "sql":         f'SELECT COUNT(*) AS "Total Contacts" FROM "{t_contacts}"',
+                        "description": "Total number of contacts",
+                    },
+                    {
+                        "id":          "total_accounts",
+                        "label":       "Total Accounts",
+                        "output_type": "kpi",
+                        "sql":         f'SELECT COUNT(*) AS "Total Accounts" FROM "{t_accounts}"',
+                        "description": "Total number of accounts",
+                    },
+                    {
+                        "id":          "leads_by_status",
+                        "label":       "Leads by Status",
+                        "output_type": "pie",
+                        "sql":         (
+                            f'SELECT "Lead Status", COUNT(*) AS "Count" '
+                            f'FROM "{t_leads}" '
+                            f'GROUP BY "Lead Status" '
+                            f'ORDER BY "Count" DESC'
+                        ),
+                        "description": "Lead status distribution",
+                    },
+                    {
+                        "id":          "deals_pipeline",
+                        "label":       "Deal Pipeline",
+                        "output_type": "funnel",
+                        "sql":         (
+                            f'SELECT "Stage", COUNT(*) AS "Count" '
+                            f'FROM "{t_deals}" '
+                            f'GROUP BY "Stage" '
+                            f'ORDER BY "Count" DESC'
+                        ),
+                        "description": "Pipeline deal stage funnel",
+                    },
+                    {
+                        "id":          "leads_by_source",
+                        "label":       "Leads by Source",
+                        "output_type": "bar",
+                        "sql":         (
+                            f'SELECT "Lead Source", COUNT(*) AS "Count" '
+                            f'FROM "{t_leads}" '
+                            f'GROUP BY "Lead Source" '
+                            f'ORDER BY "Count" DESC'
+                        ),
+                        "description": "Lead source breakdown",
+                    },
+                    {
+                        "id":          "leads_trend",
+                        "label":       "Leads Created Over Time",
+                        "output_type": "area",
+                        "sql":         (
+                            f'SELECT DATE_FORMAT("Created Time", \'%Y-%m\') AS "Month", '
+                            f'COUNT(*) AS "Count" '
+                            f'FROM "{t_leads}" '
+                            f'GROUP BY "Month" '
+                            f'ORDER BY "Month" ASC'
+                        ),
+                        "description": "Monthly lead creation trend",
+                    },
+                    {
+                        "id":          "deals_by_source",
+                        "label":       "Deals by Lead Source",
+                        "output_type": "horizontalBar",
+                        "sql":         (
+                            f'SELECT "Lead Source", COUNT(*) AS "Count" '
+                            f'FROM "{t_deals}" '
+                            f'GROUP BY "Lead Source" '
+                            f'ORDER BY "Count" DESC'
+                        ),
+                        "description": "Deal distribution by lead source",
+                    },
+                    {
+                        "id":          "recent_leads",
+                        "label":       "Recent Leads",
+                        "output_type": "table",
+                        "sql":         (
+                            f'SELECT "First Name", "Last Name", "Email", "Lead Status", '
+                            f'"Lead Source", "Created Time" '
+                            f'FROM "{t_leads}" ORDER BY "Created Time" DESC LIMIT 20'
+                        ),
+                        "description": "Latest 20 leads",
+                    },
+                ],
+            }
 
         if "lead" in q:
             return {

@@ -915,13 +915,19 @@ function renderKPIWidget(wid, comp) {
   const d  = comp.data || {};
   const ct = comp.chart_type;
 
+  const stripMoneySymbols = (val) => String(val ?? '')
+    .replace(/[\$€£¥₹₩₽₺₦₱₪₫฿₴₡]/g, '')
+    .replace(/\b(usd|inr|eur|gbp|aed|cad|aud|jpy|cny|sar|qar)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
   if (ct === 'dial' || ct === 'gauge') {
     const val = parseFloat(d.value) || 0;
     const max = parseFloat(d.max)   || 100;
     Plotly.newPlot(el, [{
       type:'indicator', mode:'gauge+number',
       value: val,
-      number: { suffix: d.suffix || '', font: { size: 26 } },
+      number: { suffix: stripMoneySymbols(d.suffix || ''), font: { size: 26 } },
       gauge: {
         axis: { range: [d.min || 0, max] },
         bar: { color:'#0d6efd' }, bgcolor:'#f0f6ff', bordercolor:'#dee2e6',
@@ -959,25 +965,20 @@ function renderKPIWidget(wid, comp) {
   // Standard KPI card
   const raw     = d.value !== undefined ? d.value
                 : (d.count !== undefined ? d.count : '—');
-  const isMoney = /revenue|amount|value|deal|earn|pay|price/i.test(comp.title||'');
   let   display = raw;
 
   if (typeof raw === 'number' || (typeof raw === 'string' && !isNaN(parseFloat(raw)))) {
     const n = parseFloat(raw);
     if (!isNaN(n)) {
-      if (isMoney) {
-        display = n >= 1e6 ? '$'+(n/1e6).toFixed(1)+'M'
-                : n >= 1e3 ? '$'+(n/1e3).toFixed(1)+'K'
-                : '$'+n.toLocaleString();
-      } else {
-        display = n >= 1e6 ? (n/1e6).toFixed(1)+'M'
-                : n >= 1e3 ? (n/1e3).toFixed(1)+'K'
-                : n.toLocaleString();
-      }
+      display = n >= 1e6 ? (n/1e6).toFixed(1)+'M'
+              : n >= 1e3 ? (n/1e3).toFixed(1)+'K'
+              : n.toLocaleString();
     }
+  } else {
+    display = stripMoneySymbols(display);
   }
 
-  const trend      = d.trend || d.change || '';
+  const trend      = stripMoneySymbols(d.trend || d.change || '');
   const trendClass = trend ? (String(trend).includes('-') ? 'down' : 'up') : '';
 
   el.innerHTML = `
