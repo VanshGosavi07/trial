@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zoho CRM Chat</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f2040 100%);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #1e40af44;
+      box-shadow: 0 2px 12px #00000055;
+    }
+    .logo {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; flex-shrink: 0;
+    }
+    header h1 { font-size: 18px; font-weight: 600; color: #f1f5f9; }
+    header p  { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #22c55e;
+      margin-left: auto;
+      box-shadow: 0 0 6px #22c55e;
+      flex-shrink: 0;
+    }
+    .status-dot.offline { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+
+    /* ── Chat Messages ── */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    #messages::-webkit-scrollbar { width: 6px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+    .message {
+      display: flex;
+      gap: 10px;
+      max-width: 800px;
+      width: 100%;
+      animation: fadeIn 0.25s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    .message.user  { align-self: flex-end; flex-direction: row-reverse; }
+    .message.bot   { align-self: flex-start; }
+
+    .avatar {
+      width: 34px; height: 34px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; flex-shrink: 0;
+    }
+    .message.user .avatar { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+    .message.bot  .avatar { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-width: calc(100% - 50px);
+    }
+    .message.user .bubble {
+      background: linear-gradient(135deg, #1d4ed8, #2563eb);
+      border-bottom-right-radius: 4px;
+      color: #eff6ff;
+    }
+    .message.bot .bubble {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-bottom-left-radius: 4px;
+      color: #e2e8f0;
+      font-family: "Cascadia Code", "Consolas", monospace;
+      font-size: 13px;
+    }
+
+    .timestamp {
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 4px;
+      text-align: right;
+    }
+    .message.bot .timestamp { text-align: left; }
+
+    /* ── Typing indicator ── */
+    .typing .bubble {
+      display: flex; gap: 5px; align-items: center;
+      padding: 14px 20px;
+    }
+    .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #64748b;
+      animation: bounce 1.2s infinite;
+    }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+      40% { transform: translateY(-6px); opacity: 1; }
+    }
+
+    /* ── Quick suggestions ── */
+    #suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 16px 12px;
+    }
+    .chip {
+      padding: 6px 14px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 20px;
+      font-size: 12px;
+      color: #94a3b8;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .chip:hover {
+      background: #334155;
+      color: #e2e8f0;
+      border-color: #3b82f6;
+    }
+
+    /* ── Input area ── */
+    #input-area {
+      background: #1e293b;
+      border-top: 1px solid #334155;
+      padding: 14px 16px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    #user-input {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 10px 16px;
+      color: #e2e8f0;
+      font-size: 14px;
+      resize: none;
+      outline: none;
+      max-height: 120px;
+      min-height: 44px;
+      line-height: 1.5;
+      transition: border-color 0.15s;
+    }
+    #user-input:focus { border-color: #3b82f6; }
+    #user-input::placeholder { color: #475569; }
+
+    #send-btn {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      border: none; border-radius: 12px;
+      color: white; font-size: 18px;
+      cursor: pointer; flex-shrink: 0;
+      transition: all 0.15s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #send-btn:hover  { transform: scale(1.05); box-shadow: 0 4px 12px #3b82f644; }
+    #send-btn:active { transform: scale(0.97); }
+    #send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* ── Welcome card ── */
+    .welcome-card {
+      background: linear-gradient(135deg, #1e293b, #0f2040);
+      border: 1px solid #1e40af44;
+      border-radius: 16px;
+      padding: 20px 24px;
+      margin: 8px 16px 0;
+    }
+    .welcome-card h2 { font-size: 16px; color: #93c5fd; margin-bottom: 8px; }
+    .welcome-card p  { font-size: 13px; color: #94a3b8; line-height: 1.6; }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .bubble { font-size: 12px; }
+      #messages { padding: 16px 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo">📊</div>
+  <div>
+    <h1>Zoho CRM Analytics</h1>
+    <p>MCP Chat Assistant</p>
+  </div>
+  <div class="status-dot" id="status-dot" title="Connection status"></div>
+</header>
+
+<!-- Welcome -->
+<div class="welcome-card">
+  <h2>👋 Welcome! Ask me anything about your CRM data.</h2>
+  <p>I'm connected to your Zoho CRM Analytics. Ask in plain English — no SQL needed.</p>
+</div>
+
+<!-- Quick chips -->
+<div id="suggestions">
+  <span class="chip" onclick="sendChip(this)">How many leads?</span>
+  <span class="chip" onclick="sendChip(this)">Leads by status</span>
+  <span class="chip" onclick="sendChip(this)">Show recent leads</span>
+  <span class="chip" onclick="sendChip(this)">How many deals?</span>
+  <span class="chip" onclick="sendChip(this)">Deals by stage</span>
+  <span class="chip" onclick="sendChip(this)">Won deals</span>
+  <span class="chip" onclick="sendChip(this)">Total revenue</span>
+  <span class="chip" onclick="sendChip(this)">CRM summary</span>
+  <span class="chip" onclick="sendChip(this)">List users</span>
+</div>
+
+<!-- Messages -->
+<div id="messages"></div>
+
+<!-- Input -->
+<div id="input-area">
+  <textarea id="user-input" rows="1" placeholder="Ask about your CRM data..."></textarea>
+  <button id="send-btn" onclick="send()" title="Send">➤</button>
+</div>
+
+<script>
+const input   = document.getElementById("user-input");
+const sendBtn = document.getElementById("send-btn");
+const msgs    = document.getElementById("messages");
+const dot     = document.getElementById("status-dot");
+
+// Auto-resize textarea
+input.addEventListener("input", () => {
+  input.style.height = "44px";
+  input.style.height = Math.min(input.scrollHeight, 120) + "px";
+});
+
+// Enter to send (Shift+Enter for newline)
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+function now() {
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function appendMessage(role, text) {
+  const div = document.createElement("div");
+  div.className = `message ${role}`;
+  const avatar = role === "user" ? "👤" : "🤖";
+  div.innerHTML = `
+    <div class="avatar">${avatar}</div>
+    <div>
+      <div class="bubble">${escHtml(text)}</div>
+      <div class="timestamp">${now()}</div>
+    </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+function appendTyping() {
+  const div = document.createElement("div");
+  div.className = "message bot typing";
+  div.innerHTML = `
+    <div class="avatar">🤖</div>
+    <div class="bubble">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+async function send() {
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = "";
+  input.style.height = "44px";
+  sendBtn.disabled = true;
+
+  appendMessage("user", text);
+  const typing = appendTyping();
+
+  try {
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text })
+    });
+
+    const data = await res.json();
+    typing.remove();
+
+    if (data.reply) {
+      appendMessage("bot", data.reply);
+      dot.classList.remove("offline");
+    } else {
+      appendMessage("bot", "Error: " + (data.error || "Unknown error"));
+      dot.classList.add("offline");
+    }
+  } catch (err) {
+    typing.remove();
+    appendMessage("bot", "Connection error. Is the server running?\n\nStart it with:\n  python server.py");
+    dot.classList.add("offline");
+  }
+
+  sendBtn.disabled = false;
+  input.focus();
+}
+
+function sendChip(el) {
+  input.value = el.textContent;
+  send();
+}
+
+// Check server on load
+window.addEventListener("load", async () => {
+  try {
+    const r = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "help" })
+    });
+    const d = await r.json();
+    if (d.reply) {
+      appendMessage("bot", d.reply);
+      dot.classList.remove("offline");
+    }
+  } catch {
+    dot.classList.add("offline");
+    appendMessage("bot", "⚠️ Cannot connect to backend.\n\nMake sure the server is running:\n  python server.py\n\nThen refresh this page.");
+  }
+});
+</script>
+</body>
+</html>
