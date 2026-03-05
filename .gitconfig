@@ -1,0 +1,5 @@
+[core]
+	autocrlf = false
+	eol = lf
+[filemode]
+	bare = false

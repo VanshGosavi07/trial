@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics AI — Zoho Dashboard</title>
+
+  <!-- Bootstrap 5.3 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- GridStack drag-drop layout -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css"/>
+  <!-- Font Awesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <!-- Plotly -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <!-- marked.js + DOMPurify -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <!-- html2canvas (widget export) -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <script>
+    if (typeof marked !== 'undefined') marked.use({ breaks: true, gfm: true });
+  </script>
+
+  <style>
+    /* ── Sidebar ─────────────────────────────────────────────── */
+    #sidebar { width:56px; transition:width .25s ease; flex-shrink:0; overflow:hidden; }
+    #sidebar:hover { width:220px; }
+    .nav-text { opacity:0; transition:opacity .15s .05s; white-space:nowrap; }
+    #sidebar:hover .nav-text { opacity:1; }
+    .sidebar-icon { width:20px; text-align:center; flex-shrink:0; font-size:15px; }
+    .sidebar-link { display:flex;align-items:center;gap:10px;padding:9px 10px 9px 16px;border-radius:8px;cursor:pointer;color:#8b92a9;text-decoration:none;transition:all .2s;margin:1px 4px; }
+    .sidebar-link:hover,.sidebar-link.active { background:rgba(255,255,255,.1);color:#fff; }
+    .sidebar-link.active { color:#60a5fa !important; }
+
+    /* ── Canvas scroll ───────────────────────────────────────── */
+    #canvasArea::-webkit-scrollbar { width:5px; }
+    #canvasArea::-webkit-scrollbar-thumb { background:#c8d0da; border-radius:3px; }
+
+    /* ── Zia FAB + Panel ─────────────────────────────────────── */
+    #ziaFab { width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#0d6efd,#0dcaf0);border:none;color:#fff;font-size:20px;cursor:pointer;transition:transform .3s;box-shadow:0 4px 20px rgba(13,110,253,.4);display:flex;align-items:center;justify-content:center; }
+    #ziaFab:hover { transform:scale(1.07); }
+    #ziaFab.open  { transform:rotate(45deg); }
+    #ziaPanel { position:fixed;bottom:84px;right:24px;z-index:1050;width:420px;transform:scale(.9) translateY(20px);opacity:0;pointer-events:none;transition:all .25s cubic-bezier(.4,0,.2,1); }
+    #ziaPanel.open { transform:none;opacity:1;pointer-events:all; }
+
+    /* ── Chat messages ───────────────────────────────────────── */
+    .zia-msg { animation:fadeUp .2s ease; }
+    .zia-bubble { max-width:85%;border-radius:12px;padding:9px 13px;font-size:13px;line-height:1.55; }
+    .zia-msg-ai .zia-bubble { background:#f0f6ff;border-bottom-left-radius:3px;color:#1e2a3a; }
+    .zia-msg-user .zia-bubble { background:#0d6efd;color:#fff;border-bottom-right-radius:3px; }
+    .zia-bot-avatar { width:28px;height:28px;border-radius:50%;background:#ddeeff;color:#0d6efd;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0; }
+
+    /* Agent status badges */
+    .agent-status { font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600;display:inline-block; }
+    .agent-query  { background:#fff3cd;color:#856404; }
+    .agent-mcp    { background:#cff4fc;color:#055160; }
+    .agent-viz    { background:#d1e7dd;color:#0a3622; }
+
+    /* ── Typing dots ─────────────────────────────────────────── */
+    .zia-typing span { width:7px;height:7px;border-radius:50%;background:#0d6efd;display:inline-block;animation:typeDot 1.2s infinite ease-in-out;margin:0 2px; }
+    .zia-typing span:nth-child(2) { animation-delay:.2s; }
+    .zia-typing span:nth-child(3) { animation-delay:.4s; }
+
+    /* ── GridStack widgets ───────────────────────────────────── */
+    .grid-stack-item-content { overflow:hidden;display:flex;flex-direction:column;height:100%;background:#fff;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.09); }
+    /* widget-body: small top pad so chart never clips header, breathing room at bottom */
+    .widget-body { flex:1;overflow:hidden;min-height:0;padding:4px 0 8px 0; }
+
+    /* ── KPI row cards (Bootstrap static row) ────────────────── */
+    .kpi-row-card { background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;height:100%;min-height:115px;transition:box-shadow .2s;display:flex;flex-direction:column; }
+    .kpi-row-card:hover { box-shadow:0 5px 20px rgba(0,0,0,.12); }
+    .kpi-card-header { background:#fafafa;flex-shrink:0; }
+    .kpi-row-card .kpi-widget { flex:1; }
+
+    /* ── Section divider (label only, no horizontal line) ──────── */
+    .section-divider { display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.06em;padding:14px 0 6px 0;margin:0; }
+
+    /* ── KPI card ────────────────────────────────────────────── */
+    .kpi-widget { display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:12px;gap:4px; }
+    .kpi-icon   { font-size:28px;line-height:1; }
+    .kpi-value  { font-size:30px;font-weight:800;color:#1a1f36;line-height:1; }
+    .kpi-subtitle { font-size:12px;color:#6c757d; }
+    .kpi-trend { font-size:12px;font-weight:600; }
+    .kpi-trend.up { color:#198754; }
+    .kpi-trend.down { color:#dc3545; }
+
+    /* ── Table in widget ─────────────────────────────────────── */
+    .widget-table { width:100%;border-collapse:collapse;font-size:12px; }
+    .widget-table thead { background:#0d6efd;color:#fff;position:sticky;top:0; }
+    .widget-table th,.widget-table td { padding:6px 10px;border:1px solid #dee2e6;text-align:left; }
+    .widget-table tbody tr:nth-child(even) { background:#f8f9ff; }
+    .widget-table tbody tr:hover { background:#ddeeff; }
+
+    /* ── Dashboard card in chat ──────────────────────────────── */
+    .zia-dash-card { background:linear-gradient(135deg,#eef6ff,#f5f9ff);border:1.5px solid #bee3f8;border-radius:8px;padding:10px 12px;cursor:pointer;transition:all .2s; }
+    .zia-dash-card:hover { border-color:#0d6efd;box-shadow:0 2px 10px rgba(13,110,253,.15); }
+
+    /* ── Bubble markdown ─────────────────────────────────────── */
+    .zia-bubble table { width:100%;border-collapse:collapse;font-size:12px;margin-top:6px; }
+    .zia-bubble table thead { background:#0d6efd;color:#fff; }
+    .zia-bubble table th,.zia-bubble table td { padding:5px 8px;border:1px solid #dee2e6;text-align:left; }
+    .zia-bubble table tbody tr:nth-child(even) { background:#f8f9ff; }
+    .zia-bubble code  { background:#f0f2f5;border-radius:3px;padding:1px 4px;font-size:11px;font-family:monospace; }
+    .zia-bubble pre   { background:#f0f2f5;border-radius:6px;padding:8px;overflow-x:auto;font-size:11px;margin:4px 0 0; }
+    .zia-bubble p     { margin:0 0 4px; }
+    .zia-bubble ul,.zia-bubble ol { margin:4px 0;padding-left:18px; }
+    .zia-bubble li    { margin-bottom:2px; }
+
+    /* ── Animations ──────────────────────────────────────────── */
+    @keyframes fadeUp  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes typeDot { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-7px)} }
+
+    /* ── Utilities ───────────────────────────────────────────── */
+    .hidden { display:none !important; }
+    body { background:#f0f2f5 !important; }
+
+    @media(max-width:600px) {
+      #sidebar   { display:none !important; }
+      #ziaPanel  { width:calc(100vw - 32px);right:16px; }
+    }
+  </style>
+</head>
+<body class="d-flex overflow-hidden" style="height:100vh;">
+
+<!-- ═══ SIDEBAR ═══════════════════════════════════════════════════════════════ -->
+<nav id="sidebar" class="d-flex flex-column py-2 gap-0" style="background:#1a1f36;">
+
+  <div class="d-flex align-items-center gap-2 px-2 pb-3 mb-1"
+    style="border-bottom:1px solid rgba(255,255,255,.1)">
+    <div class="d-flex align-items-center justify-content-center rounded-2 flex-shrink-0 text-white"
+      style="width:36px;height:36px;background:#0d6efd;font-size:15px;">
+      <i class="fa-solid fa-chart-pie"></i>
+    </div>
+    <span class="nav-text fw-bold text-white" style="font-size:15px">Analytics AI</span>
+  </div>
+
+  <a class="sidebar-link active" href="javascript:void(0)" onclick="showView('dashboard',this)">
+    <i class="fa-solid fa-gauge-high sidebar-icon"></i>
+    <span class="nav-text">Dashboards</span>
+  </a>
+  <a class="sidebar-link" href="javascript:void(0)" onclick="showView('reports',this)">
+    <i class="fa-solid fa-table-list sidebar-icon"></i>
+    <span class="nav-text">Reports</span>
+  </a>
+  <a class="sidebar-link" href="javascript:void(0)" onclick="showView('analytics',this)">
+    <i class="fa-solid fa-chart-bar sidebar-icon"></i>
+    <span class="nav-text">Analytics</span>
+  </a>
+  <a class="sidebar-link" href="javascript:void(0)" onclick="showView('data',this)">
+    <i class="fa-solid fa-database sidebar-icon"></i>
+    <span class="nav-text">Analytics Data</span>
+  </a>
+
+  <div class="flex-grow-1"></div>
+  <div style="height:1px;background:rgba(255,255,255,.1);margin:4px 8px"></div>
+  <a class="sidebar-link" href="javascript:location.reload()">
+    <i class="fa-solid fa-arrows-rotate sidebar-icon"></i>
+    <span class="nav-text">Reload</span>
+  </a>
+</nav>
+
+<!-- ═══ MAIN ══════════════════════════════════════════════════════════════════ -->
+<div class="d-flex flex-column flex-grow-1 overflow-hidden">
+
+  <!-- TOP NAV -->
+  <nav class="navbar bg-white border-bottom flex-shrink-0 px-3 py-0" style="height:52px;">
+    <span class="navbar-brand mb-0 fw-bold fs-6" id="topbarTitle">
+      <span class="text-primary">Analytics</span> Dashboard
+    </span>
+    <div class="d-flex gap-2 ms-auto">
+      <button class="btn btn-primary btn-sm" onclick="newDashboard()" title="Create a blank dashboard tab">
+        <i class="fa-solid fa-plus me-1"></i>New Dashboard
+      </button>
+      <button class="btn btn-outline-success btn-sm hidden" id="exportBtn" onclick="exportDashboard()">
+        <i class="fa-solid fa-file-export me-1"></i>Export
+      </button>
+      <button class="btn btn-outline-secondary btn-sm hidden" id="refreshBtn" onclick="refreshCurrentDashboard()">
+        <i class="fa-solid fa-arrows-rotate me-1"></i>Refresh
+      </button>
+    </div>
+  </nav>
+
+  <!-- CANVAS AREA -->
+  <div id="canvasArea" class="flex-grow-1 overflow-y-auto p-3" style="padding-bottom:100px !important;">
+
+    <!-- Dashboard Tabs -->
+    <ul class="nav nav-tabs flex-nowrap overflow-x-auto mb-3 hidden" id="dashboardTabs"
+      style="border-bottom:2px solid #dee2e6;"></ul>
+
+    <!-- Dashboard mount point -->
+    <div id="dashboardMount"></div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="text-center py-5 mt-4">
+      <div class="mb-3" style="font-size:72px;color:#0d6efd;opacity:.15;">
+        <i class="fa-solid fa-chart-column"></i>
+      </div>
+      <h4 class="fw-bold text-dark mb-2">Start with a question</h4>
+      <p class="text-muted mb-4" style="max-width:440px;margin:0 auto 16px">
+        Ask the AI agent to build a dashboard, generate charts, or analyse your Zoho Analytics data.
+      </p>
+      <div class="d-flex flex-wrap gap-2 justify-content-center">
+        <button class="btn btn-outline-primary btn-sm rounded-pill px-3"
+          onclick="askZia('Build a complete sales performance dashboard')">
+          <i class="fa-solid fa-gauge me-1"></i>Sales Dashboard
+        </button>
+        <button class="btn btn-outline-primary btn-sm rounded-pill px-3"
+          onclick="askZia('Show leads distribution by status and source')">
+          <i class="fa-solid fa-chart-pie me-1"></i>Lead Analytics
+        </button>
+        <button class="btn btn-outline-primary btn-sm rounded-pill px-3"
+          onclick="askZia('Deal pipeline funnel with stage KPIs and win rate')">
+          <i class="fa-solid fa-filter me-1"></i>Pipeline Funnel
+        </button>
+        <button class="btn btn-outline-primary btn-sm rounded-pill px-3"
+          onclick="askZia('Revenue analytics with monthly trend and top deals')">
+          <i class="fa-solid fa-chart-line me-1"></i>Revenue Analysis
+        </button>
+        <button class="btn btn-outline-primary btn-sm rounded-pill px-3"
+          onclick="askZia('How many leads, contacts, deals and total pipeline value')">
+          <i class="fa-solid fa-globe me-1"></i>CRM Summary
+        </button>
+        <button class="btn btn-outline-primary btn-sm rounded-pill px-3"
+          onclick="askZia('Show me a report table of all leads with name email and status')">
+          <i class="fa-solid fa-table me-1"></i>Leads Report
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /canvasArea -->
+</div><!-- /main -->
+
+<!-- ═══ AUTH BANNER ═══════════════════════════════════════════════════════════ -->
+<div id="authBanner" class="position-fixed top-0 start-0 end-0 hidden" style="z-index:9999;">
+  <div id="authBannerInner" class="alert mb-0 rounded-0 text-white py-2 px-4
+    d-flex align-items-center gap-3 border-0" style="background:#0d6efd;">
+    <div class="spinner-border spinner-border-sm text-white" role="status"
+      style="width:16px;height:16px;"></div>
+    <span id="authBannerText">Connecting to Zoho Analytics…</span>
+  </div>
+</div>
+
+<!-- ═══ ZIA FAB ═══════════════════════════════════════════════════════════════ -->
+<button id="ziaFab" class="position-fixed" style="bottom:24px;right:24px;z-index:1000;"
+  onclick="toggleZia()">
+  <i class="fa-solid fa-robot"></i>
+</button>
+
+<!-- ═══ ZIA PANEL ═════════════════════════════════════════════════════════════ -->
+<div id="ziaPanel" class="card shadow-lg border-0 overflow-hidden">
+
+  <!-- Header -->
+  <div class="d-flex align-items-center gap-2 px-3 py-2 flex-shrink-0"
+    style="background:linear-gradient(135deg,#0d6efd,#0dcaf0);">
+    <div class="zia-bot-avatar" style="background:rgba(255,255,255,.25);color:#fff;">
+      <i class="fa-solid fa-robot"></i>
+    </div>
+    <div class="flex-grow-1">
+      <div class="fw-semibold text-white" style="font-size:13px;">Analytics AI Agent</div>
+      <div class="text-white-50" style="font-size:11px;" id="ziaSubtitle">
+        Query &bull; Fetch &bull; Visualise
+      </div>
+    </div>
+    <button type="button" class="btn btn-link text-white p-0" onclick="toggleZia()">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+
+  <!-- Messages -->
+  <div id="ziaMessages" class="overflow-y-auto d-flex flex-column gap-2 p-3"
+    style="min-height:180px;max-height:420px;background:#fafcff;">
+    <div class="zia-msg d-flex gap-2 zia-msg-ai">
+      <div class="zia-bot-avatar flex-shrink-0"><i class="fa-solid fa-robot"></i></div>
+      <div class="zia-bubble">
+        Hi! I'm your <strong>Analytics AI Agent</strong>.<br><br>
+        I use a <strong>multi-agent pipeline</strong> to understand your request,
+        fetch real data from Zoho Analytics, and build
+        <strong>interactive dashboards</strong> with drag-and-drop widgets.<br><br>
+        What would you like to explore?
+      </div>
+    </div>
+  </div>
+
+  <!-- Input row -->
+  <div class="d-flex gap-2 px-3 py-2 bg-white border-top flex-shrink-0">
+    <input type="text" id="ziaInput" class="form-control form-control-sm rounded-pill"
+      placeholder="Ask about your Analytics data…"
+      onkeydown="if(event.key==='Enter')sendZiaMessage()">
+    <button type="button" id="ziaSendBtn"
+      class="btn btn-primary btn-sm rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+      style="width:32px;height:32px;" onclick="sendZiaMessage()">
+      <i class="fa-solid fa-paper-plane fa-xs"></i>
+    </button>
+  </div>
+</div><!-- /ziaPanel -->
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<!-- GridStack -->
+<script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   STATE
+════════════════════════════════════════════════════════════════ */
+let conversationHistory   = [];
+let dashboards            = {};      // id → { title, components, gridInstance }
+let activeDashboardId     = null;
+let dashboardCounter      = 0;
+let ziaOpen               = false;
+let pendingDashboardUpdate = null;
+let pendingUpdateMode      = null;
+let widgetComponents       = {};     // wid → { comp, gsType }
+
+const PALETTE = [
+  '#3b82f6','#22c55e','#f97316','#a855f7','#ef4444',
+  '#14b8a6','#eab308','#06b6d4','#8b5cf6','#ec4899',
+  '#84cc16','#f43f5e','#0ea5e9','#d946ef','#fb923c',
+  '#10b981','#6366f1','#64748b'
+];
+const KPI_COLORS = ['border-primary','border-success','border-warning',
+                    'border-danger','border-info','border-secondary'];
+
+/* ═══════════════════════════════════════════════════════════════
+   AUTH CHECK
+════════════════════════════════════════════════════════════════ */
+async function checkAuth() {
+  const banner = document.getElementById('authBanner');
+  const inner  = document.getElementById('authBannerInner');
+  banner.classList.remove('hidden');
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    if (d.authenticated) {
+      inner.style.background = '#198754';
+      document.getElementById('authBannerText').textContent =
+        `Connected to ${d.workspace || 'Zoho Analytics'} ✓`;
+      setTimeout(() => banner.classList.add('hidden'), 2500);
+    } else {
+      inner.style.background = '#dc3545';
+      document.getElementById('authBannerText').textContent = 'MCP connection failed.';
+      setTimeout(() => banner.classList.add('hidden'), 4000);
+    }
+  } catch {
+    inner.style.background = '#6c757d';
+    document.getElementById('authBannerText').textContent = 'Server not reachable.';
+    setTimeout(() => banner.classList.add('hidden'), 3000);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ZIA PANEL
+════════════════════════════════════════════════════════════════ */
+function toggleZia() {
+  ziaOpen = !ziaOpen;
+  document.getElementById('ziaPanel').classList.toggle('open', ziaOpen);
+  document.getElementById('ziaFab').classList.toggle('open', ziaOpen);
+  if (ziaOpen) setTimeout(() => document.getElementById('ziaInput').focus(), 250);
+}
+
+function askZia(prompt) {
+  if (!ziaOpen) toggleZia();
+  document.getElementById('ziaInput').value = prompt;
+  sendZiaMessage();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SEND MESSAGE
+════════════════════════════════════════════════════════════════ */
+async function sendZiaMessage() {
+  const input = document.getElementById('ziaInput');
+  const msg   = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  appendZiaMsg('user', msg);
+  document.getElementById('ziaSendBtn').disabled = true;
+
+  // Detect add-to-dashboard intent
+  if (activeDashboardId && !pendingDashboardUpdate) {
+    const lower = msg.toLowerCase();
+    const isModify =
+      /\b(add|include|append|insert)\b.*\b(chart|graph|kpi|widget|table|report)\b/.test(lower) ||
+      /\b(add|include)\b.*(to|into|in)\b.*(dashboard|this|current)\b/.test(lower)             ||
+      /\b(update|modify|change|replace)\b.*(dashboard|chart|this)\b/.test(lower);
+    if (isModify) {
+      pendingDashboardUpdate = activeDashboardId;
+      pendingUpdateMode = lower.match(/\b(update|modify|change|replace)\b/) ? 'modify' : 'add';
+    }
+  }
+
+  // Show agent pipeline status
+  showZiaTyping('Agent pipeline: query → fetch → visualise…');
+  updateAgentStatus('query');
+
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, history: conversationHistory })
+    });
+    const data = await resp.json();
+    hideZiaTyping();
+
+    if (data.success) {
+      conversationHistory.push({ role: 'user',      content: msg        });
+      conversationHistory.push({ role: 'assistant', content: data.message });
+      if (conversationHistory.length > 20)
+        conversationHistory = conversationHistory.slice(-20);
+      handleAgentResponse(data, msg);
+    } else {
+      appendZiaMsg('ai', '⚠️ ' + (data.error || data.message || 'Something went wrong.'));
+      pendingDashboardUpdate = null; pendingUpdateMode = null;
+    }
+  } catch (err) {
+    hideZiaTyping();
+    appendZiaMsg('ai', '⚠️ Connection error. Please try again.');
+    pendingDashboardUpdate = null; pendingUpdateMode = null;
+  }
+  document.getElementById('ziaSendBtn').disabled = false;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HANDLE AGENT RESPONSE
+════════════════════════════════════════════════════════════════ */
+function handleAgentResponse(data, userPrompt) {
+  // Dashboard JSON comes either in data.dashboard or embedded in data.message
+  const dashSpec = data.dashboard || extractVisualization(data.message);
+
+  const prose = cleanJSON(data.message);     // strip embedded JSON
+
+  if (dashSpec && (dashSpec.dashboard === true || dashSpec.components?.length)) {
+    const components = (dashSpec.components || []).map(c => ({
+      ...c,
+      chart_type: normalizeChartType(c.chart_type)
+    }));
+
+    // ── Modify / Add to existing tab ──────────────────────────────────────
+    if (pendingDashboardUpdate && dashboards[pendingDashboardUpdate]) {
+      const tid  = pendingDashboardUpdate;
+      const dash = dashboards[tid];
+
+      if (pendingUpdateMode === 'add') {
+        const existing = new Set(dash.components.map(c => c.title));
+        const newComps  = components.filter(c => !existing.has(c.title));
+        dash.components = [...dash.components, ...newComps];
+        appendZiaMsg('ai',
+          `Added **${newComps.length}** component${newComps.length!==1?'s':''} to **${dash.title}**.`);
+      } else {
+        dash.components = components;
+        appendZiaMsg('ai', `**${dash.title}** updated.`);
+      }
+
+      pendingDashboardUpdate = null; pendingUpdateMode = null;
+      activeDashboardId = tid;
+      renderDashboardCanvas(tid);
+      return;
+    }
+
+    // ── New tab ───────────────────────────────────────────────────────────
+    const id    = 'dash_' + (++dashboardCounter) + '_' + Date.now();
+    const title = dashSpec.title || ('Dashboard ' + dashboardCounter);
+    dashboards[id] = {
+      title, components: JSON.parse(JSON.stringify(components)),
+      gridInstance: null
+    };
+    activeDashboardId     = id;
+    pendingDashboardUpdate = null; pendingUpdateMode = null;
+    renderDashboardCanvas(id);
+
+    const kpiN   = components.filter(c => ['kpi','numeric','gauge','dial','bullet'].includes(c.chart_type)).length;
+    const chartN = components.length - kpiN;
+
+    if (prose) appendZiaMsg('ai', prose);
+    appendZiaDashboardCard(title, kpiN, chartN, id);
+
+  } else if (dashSpec && dashSpec.chart_type) {
+    // ── Single widget ─────────────────────────────────────────────────────
+    dashSpec.chart_type = normalizeChartType(dashSpec.chart_type);
+    if (pendingDashboardUpdate && dashboards[pendingDashboardUpdate]) {
+      const tid  = pendingDashboardUpdate;
+      dashboards[tid].components.push(dashSpec);
+      appendZiaMsg('ai', `Added **${dashSpec.title || 'chart'}** to the dashboard.`);
+      pendingDashboardUpdate = null; pendingUpdateMode = null;
+      activeDashboardId = tid;
+      renderDashboardCanvas(tid);
+      return;
+    }
+    const id = 'dash_' + (++dashboardCounter) + '_' + Date.now();
+    dashboards[id] = {
+      title: dashSpec.title || 'Chart',
+      components: [JSON.parse(JSON.stringify(dashSpec))],
+      gridInstance: null
+    };
+    activeDashboardId     = id;
+    pendingDashboardUpdate = null; pendingUpdateMode = null;
+    renderDashboardCanvas(id);
+    if (prose) appendZiaMsg('ai', prose);
+    appendZiaDashboardCard(dashSpec.title || 'Chart', 0, 1, id);
+
+  } else {
+    // ── Text-only answer ──────────────────────────────────────────────────
+    pendingDashboardUpdate = null; pendingUpdateMode = null;
+    appendZiaMsg('ai', prose || data.message || 'No data returned.');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RENDER DASHBOARD CANVAS
+════════════════════════════════════════════════════════════════ */
+function renderDashboardCanvas(id) {
+  const dash = dashboards[id];
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('refreshBtn').classList.remove('hidden');
+  document.getElementById('exportBtn').classList.remove('hidden');
+
+  // Tabs
+  const tabsEl = document.getElementById('dashboardTabs');
+  tabsEl.classList.remove('hidden');
+  if (!document.getElementById('tab_' + id)) {
+    const li = document.createElement('li');
+    li.className = 'nav-item flex-shrink-0';
+    li.setAttribute('data-tab-id', id);
+    li.innerHTML = `
+      <button class="nav-link d-flex align-items-center gap-2 px-3 py-2 small" id="tab_${id}"
+        onclick="switchTab('${id}')">
+        <i class="fa-solid fa-chart-pie fa-xs"></i>
+        <span>${escapeHtml(dash.title)}</span>
+        <button type="button" class="btn-close ms-1" style="font-size:8px;width:10px;height:10px;"
+          onclick="closeTab(event,'${id}')"></button>
+      </button>`;
+    tabsEl.appendChild(li);
+  }
+
+  tabsEl.querySelectorAll('.nav-link').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab_' + id)?.classList.add('active');
+  document.getElementById('topbarTitle').innerHTML =
+    `<span class="text-primary">Analytics</span> &mdash; ${escapeHtml(dash.title)}`;
+
+  buildGrid(id);
+}
+
+function switchTab(id) {
+  if (!dashboards[id]) return;
+  activeDashboardId = id;
+  document.getElementById('dashboardTabs').querySelectorAll('.nav-link')
+    .forEach(t => t.classList.remove('active'));
+  document.getElementById('tab_' + id)?.classList.add('active');
+  document.getElementById('topbarTitle').innerHTML =
+    `<span class="text-primary">Analytics</span> &mdash; ${escapeHtml(dashboards[id].title)}`;
+  buildGrid(id);
+}
+
+function closeTab(event, id) {
+  event.stopPropagation();
+  delete dashboards[id];
+  if (pendingDashboardUpdate === id) { pendingDashboardUpdate = null; pendingUpdateMode = null; }
+  document.querySelector(`[data-tab-id="${id}"]`)?.remove();
+
+  const rem = Object.keys(dashboards);
+  if (rem.length > 0) {
+    switchTab(rem[rem.length - 1]);
+  } else {
+    activeDashboardId = null;
+    document.getElementById('dashboardMount').innerHTML = '';
+    document.getElementById('emptyState').classList.remove('hidden');
+    document.getElementById('dashboardTabs').classList.add('hidden');
+    document.getElementById('topbarTitle').innerHTML =
+      '<span class="text-primary">Analytics</span> Dashboard';
+    document.getElementById('refreshBtn').classList.add('hidden');
+    document.getElementById('exportBtn').classList.add('hidden');
+  }
+}
+
+function normalizeChartType(rawType) {
+  const valid = new Set([
+    'kpi','numeric','gauge','dial','bullet',
+    'bar','column','horizontalBar','stacked','stackedbar','groupedBar',
+    'butterfly','waterfall','histogram',
+    'pie','doughnut','donut','ring','halfpie','halfring','halfdoughnut','sunburst',
+    'line','area','multiLine','combination','combo',
+    'scatter','bubble','packedbubble',
+    'funnel','heatmap','radar','spider','web','polarArea','treemap',
+    'box','violin','table','pivot','report'
+  ]);
+  const aliases = {
+    barr: 'bar',
+    bars: 'bar',
+    verticalbar: 'bar',
+    hbar: 'horizontalBar',
+    horizontalbar: 'horizontalBar',
+    groupedbar: 'groupedBar',
+    groupbar: 'groupedBar',
+    multiline: 'multiLine',
+    polar: 'polarArea',
+    polarea: 'polarArea',
+    donught: 'doughnut',
+    dougnut: 'doughnut'
+  };
+
+  const t = (rawType || '').toString().trim();
+  if (!t) return 'bar';
+  if (valid.has(t)) return t;
+
+  const lower = t.toLowerCase();
+  if (valid.has(lower)) return lower;
+
+  const canonical = lower.replace(/[^a-z0-9]/g, '');
+  if (aliases[canonical]) return aliases[canonical];
+
+  return 'bar';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BUILD DASHBOARD GRID
+   Layout:
+     ┌──────────────────────────────────────────────────┐
+     │  KEY METRICS  (Bootstrap flex row — 4 KPI cards) │
+     └──────────────────────────────────────────────────┘
+     ┌──────────────────────────────────────────────────┐
+     │  CHARTS & REPORTS  (GridStack — drag / resize)   │
+     └──────────────────────────────────────────────────┘
+════════════════════════════════════════════════════════════════ */
+function buildGrid(dashId) {
+  const dash  = dashboards[dashId];
+  const mount = document.getElementById('dashboardMount');
+  mount.innerHTML = '';
+
+  dash.components = (dash.components || []).map(c => ({
+    ...c,
+    chart_type: normalizeChartType(c.chart_type)
+  }));
+
+  if (!dash.components || dash.components.length === 0) {
+    mount.innerHTML = `<div class="text-center py-5 text-muted">
+      <i class="fa-solid fa-plus-circle fa-2x mb-3 d-block opacity-25"></i>
+      <p>This dashboard is empty.</p>
+      <p class="small">Ask the AI agent to add charts, KPIs, or tables.</p>
+    </div>`;
+    return;
+  }
+
+  const kpiTypes = new Set(['kpi','numeric','gauge','dial','bullet']);
+  const kpis     = dash.components.filter(c =>  kpiTypes.has(c.chart_type));
+  const charts   = dash.components.filter(c => !kpiTypes.has(c.chart_type));
+
+  /* ═══ SECTION 1 — KEY METRICS (Bootstrap responsive row) ═══════ */
+  if (kpis.length > 0) {
+    const kpiHeader = document.createElement('div');
+    kpiHeader.className = 'section-divider';
+    kpiHeader.innerHTML = '<i class="fa-solid fa-gauge-high text-primary me-1"></i>Key Metrics';
+    mount.appendChild(kpiHeader);
+
+    // Responsive column: 1-2 → col-6, 3-4 → col-3 (4 per row), 5-6 → col-4, 7+ → col-3
+    const colCls = kpis.length <= 2 ? 'col-12 col-sm-6'
+                 : kpis.length <= 4 ? 'col-12 col-sm-6 col-xl-3'
+                 : kpis.length <= 6 ? 'col-12 col-sm-4'
+                 : 'col-12 col-sm-3';
+
+    const kpiRow = document.createElement('div');
+    kpiRow.className = 'row g-3 mb-3';
+    kpiRow.id = 'kpi_row_' + dashId;
+    mount.appendChild(kpiRow);
+
+    kpis.forEach((comp, i) => {
+      const wid       = 'w_' + Math.random().toString(36).slice(2, 10);
+      const colorCls  = KPI_COLORS[i % KPI_COLORS.length];
+
+      const colDiv = document.createElement('div');
+      colDiv.className = colCls;
+      colDiv.id = 'kpi_col_' + wid;
+      colDiv.innerHTML = `
+        <div class="kpi-row-card border-top border-3 ${colorCls}">
+          <div class="kpi-card-header d-flex align-items-center px-3 py-1 border-bottom">
+            <span class="text-secondary fw-medium flex-grow-1 text-truncate" style="font-size:11px;">
+              ${escapeHtml(comp.title || '')}
+            </span>
+            <button class="btn btn-link btn-sm text-danger p-0" title="Remove"
+              onclick="event.stopPropagation();document.getElementById('kpi_col_${wid}')?.remove()">
+              <i class="fa-solid fa-xmark fa-xs"></i>
+            </button>
+          </div>
+          <div id="${wid}" class="flex-grow-1" style="min-height:80px;"></div>
+        </div>`;
+
+      kpiRow.appendChild(colDiv);
+      widgetComponents[wid] = { comp, gsType: 'kpi' };
+      setTimeout(() => renderKPIWidget(wid, comp), 80);
+    });
+  }
+
+  /* ═══ SECTION 2 — CHARTS & REPORTS (GridStack drag-resize) ════ */
+  if (charts.length > 0) {
+    const chartHeader = document.createElement('div');
+    chartHeader.className = 'section-divider';
+    chartHeader.innerHTML = '<i class="fa-solid fa-chart-bar text-primary me-1"></i>Charts &amp; Reports';
+    mount.appendChild(chartHeader);
+
+    const gridEl = document.createElement('div');
+    gridEl.className = 'grid-stack';
+    gridEl.id = 'gs_' + dashId;
+    mount.appendChild(gridEl);
+
+    if (dash.gridInstance) { try { dash.gridInstance.destroy(false); } catch (_) {} }
+
+    const grid = GridStack.init({
+      column: 12, cellHeight: 90, animate: true,
+      resizable: { handles: 'all' },
+      draggable: { handle: '.gs-drag-handle' },
+      margin: 20,   // 20px gap on all 4 sides → 40px between stacked items
+    }, '#gs_' + dashId);
+    dash.gridInstance = grid;
+
+    charts.forEach((comp) => {
+      const wid = 'w_' + Math.random().toString(36).slice(2, 10);
+      const el  = document.createElement('div');
+      const ct  = normalizeChartType(comp.chart_type);
+      const sz  = _resolveWidgetSize(comp);
+      el.className = 'grid-stack-item';
+      el.setAttribute('gs-w', sz.w);
+      el.setAttribute('gs-h', sz.h);
+      el.setAttribute('gs-min-h', (ct === 'table' || ct === 'pivot' || ct === 'report') ? 2 : 3);
+      el.setAttribute('gs-min-w', (ct === 'table' || ct === 'pivot' || ct === 'report') ? 4 : 2);
+
+      el.innerHTML = `
+        <div class="grid-stack-item-content">
+          <div class="border-bottom px-2 py-1 d-flex align-items-center gap-1 flex-shrink-0 gs-drag-handle"
+            style="cursor:grab;background:#fafafa;border-radius:10px 10px 0 0;">
+            <i class="fa-solid fa-grip-dots-vertical text-muted me-1" style="font-size:10px;opacity:.5"></i>
+            <span class="text-secondary fw-medium flex-grow-1 text-truncate" style="font-size:12px;">
+              ${escapeHtml(comp.title || '')}
+            </span>
+            <div class="dropdown" onclick="event.stopPropagation()">
+              <button type="button" class="btn btn-link btn-sm text-secondary p-0 me-1"
+                data-bs-toggle="dropdown" title="Resize" style="font-size:11px;">
+                <i class="fa-solid fa-expand-arrows-alt"></i>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="min-width:160px;font-size:12px;">
+                <li><h6 class="dropdown-header py-1">Height</h6></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidget(this,2)">Compact (2)</button></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidget(this,4)">Standard (4)</button></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidget(this,6)">Tall (6)</button></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidget(this,8)">Extra Tall (8)</button></li>
+                <li><hr class="dropdown-divider my-1"></li>
+                <li><h6 class="dropdown-header py-1">Width</h6></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidgetW(this,4)">Narrow (4)</button></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidgetW(this,6)">Half (6)</button></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidgetW(this,8)">Wide (8)</button></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidgetW(this,12)">Full (12)</button></li>
+              </ul>
+            </div>
+            <button type="button" class="btn btn-link btn-sm text-secondary p-0 me-1"
+              title="Download PNG" style="font-size:11px;"
+              onclick="event.stopPropagation();downloadWidget('${wid}','${escapeAttr(comp.title||'chart')}')">
+              <i class="fa-solid fa-download"></i>
+            </button>
+            <button type="button" class="btn btn-link btn-sm text-danger p-0"
+              title="Remove" style="font-size:11px;"
+              onclick="event.stopPropagation();removeWidget(this)">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+          <div class="widget-body" id="${wid}"></div>
+        </div>`;
+
+      widgetComponents[wid] = { comp, gsType: 'chart' };
+      grid.addWidget(el);
+      // Delay render until GridStack finishes layout (200 ms is reliable)
+      setTimeout(() => renderPlotlyChart(wid, comp), 200);
+    });
+
+    grid.on('resizestop', (_ev, el) => {
+      el.querySelectorAll('.js-plotly-plot').forEach(p => Plotly.relayout(p, { autosize: true }));
+    });
+
+  } else if (kpis.length === 0) {
+    // No components at all (shouldn't happen, but guard)
+    mount.innerHTML = `<div class="text-center py-4 text-muted small">
+      No widgets to display.</div>`;
+  }
+}
+
+function _defaultW(ct) {
+  const map = { funnel:4, pivot:12, table:12, horizontalBar:8, scatter:7, bubble:7,
+                heatmap:8, multiLine:8, groupedBar:8, stacked:8, line:7, area:7 };
+  return map[ct] || 6;
+}
+function _defaultH(ct) {
+  const map = { pivot:6, table:6 };
+  return map[ct] || 5;
+}
+
+function _resolveWidgetSize(comp) {
+  const ct = normalizeChartType(comp?.chart_type);
+  const customW = Number(comp?.w);
+  const customH = Number(comp?.h);
+
+  let w = customW || _defaultW(ct);
+  let h = customH || _defaultH(ct);
+
+  // Auto-fit compact tables so tiny data doesn't consume huge dashboard area.
+  if (!customW && !customH && (ct === 'table' || ct === 'pivot' || ct === 'report')) {
+    const rows = Array.isArray(comp?.data?.rows) ? comp.data.rows.length : 0;
+    const cols = Array.isArray(comp?.data?.columns)
+      ? comp.data.columns.length
+      : (rows > 0 && comp?.data?.rows?.[0] ? Object.keys(comp.data.rows[0]).length : 0);
+
+    if (cols <= 2) w = 6;
+    else if (cols <= 4) w = 8;
+    else if (cols <= 7) w = 10;
+    else w = 12;
+
+    if (rows <= 1) h = 3;
+    else if (rows <= 4) h = 4;
+    else if (rows <= 10) h = 5;
+    else h = 6;
+  }
+
+  return {
+    w: Math.max(3, Math.min(12, w)),
+    h: Math.max(2, Math.min(8, h)),
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   WIDGET ACTIONS
+════════════════════════════════════════════════════════════════ */
+function removeWidget(btn) { btn.closest('.grid-stack-item')?.remove(); }
+
+function downloadWidget(wid, title) {
+  const el = document.getElementById(wid);
+  if (!el) return;
+  const plotEl = el.querySelector('.js-plotly-plot');
+  if (plotEl) {
+    Plotly.downloadImage(plotEl, { format:'png', width:900, height:600,
+      filename: title.replace(/[^\w]/g,'_') });
+    return;
+  }
+  // Fallback: html2canvas for tables / KPI cards
+  const card = el.closest('.grid-stack-item-content');
+  if (card && typeof html2canvas !== 'undefined') {
+    html2canvas(card).then(canvas => {
+      const a = document.createElement('a');
+      a.download = (title||'widget').replace(/[^\w]/g,'_') + '.png';
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    });
+  }
+}
+
+function refreshCurrentDashboard() {
+  if (activeDashboardId) buildGrid(activeDashboardId);
+}
+
+function newDashboard() {
+  const id    = 'dash_' + (++dashboardCounter) + '_' + Date.now();
+  const title = 'Dashboard ' + dashboardCounter;
+  dashboards[id] = { title, components: [], gridInstance: null };
+  activeDashboardId     = id;
+  pendingDashboardUpdate = id;
+  pendingUpdateMode      = 'add';
+  renderDashboardCanvas(id);
+  if (!ziaOpen) toggleZia();
+  setTimeout(() => appendZiaMsg('ai',
+    `**${escapeHtml(title)}** created. Ask me to add widgets:\n\n` +
+    `• *"Add leads by status pie chart"*\n` +
+    `• *"Add a revenue KPI card"*\n` +
+    `• *"Add deals pipeline funnel"*`, false), 150);
+}
+
+function exportDashboard() {
+  const mount = document.getElementById('dashboardMount');
+  if (!mount || !typeof html2canvas !== 'undefined') return;
+  html2canvas(mount, { backgroundColor:'#f0f2f5', scale: 1.5 }).then(canvas => {
+    const a = document.createElement('a');
+    const title = dashboards[activeDashboardId]?.title || 'dashboard';
+    a.download = title.replace(/[^\w]/g,'_') + '.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  });
+}
+
+function resizeWidget(btn, h) {
+  const item = btn.closest('.grid-stack-item');
+  const grid = dashboards[activeDashboardId]?.gridInstance;
+  if (!grid || !item) return;
+  grid.update(item, { h });
+  setTimeout(() => {
+    const wid = item.querySelector('.widget-body')?.id;
+    if (wid) {
+      item.querySelectorAll('.js-plotly-plot').forEach(p => Plotly.relayout(p, { autosize: true }));
+      const info = widgetComponents[wid];
+      if (info?.gsType === 'kpi') renderKPIWidget(wid, info.comp);
+    }
+  }, 200);
+}
+
+function resizeWidgetW(btn, w) {
+  const item = btn.closest('.grid-stack-item');
+  const grid = dashboards[activeDashboardId]?.gridInstance;
+  if (!grid || !item) return;
+  grid.update(item, { w });
+  setTimeout(() => {
+    item.querySelectorAll('.js-plotly-plot').forEach(p => Plotly.relayout(p, { autosize: true }));
+  }, 200);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   KPI RENDERER
+════════════════════════════════════════════════════════════════ */
+function renderKPIWidget(wid, comp) {
+  const el = document.getElementById(wid);
+  if (!el) return;
+  const d  = comp.data || {};
+  const ct = comp.chart_type;
+
+  if (ct === 'dial' || ct === 'gauge') {
+    const val = parseFloat(d.value) || 0;
+    const max = parseFloat(d.max)   || 100;
+    Plotly.newPlot(el, [{
+      type:'indicator', mode:'gauge+number',
+      value: val,
+      number: { suffix: d.suffix || '', font: { size: 26 } },
+      gauge: {
+        axis: { range: [d.min || 0, max] },
+        bar: { color:'#0d6efd' }, bgcolor:'#f0f6ff', bordercolor:'#dee2e6',
+        steps: [
+          { range: [0, max*0.33], color:'#fee2e2' },
+          { range: [max*0.33, max*0.66], color:'#fef9c3' },
+          { range: [max*0.66, max],      color:'#dcfce7' }
+        ]
+      }
+    }], { margin:{t:24,b:8,l:10,r:10},
+          height: Math.max((el.offsetHeight||130)-32, 80),
+          paper_bgcolor:'transparent', plot_bgcolor:'transparent' },
+    { displayModeBar:false, responsive:true });
+    return;
+  }
+
+  if (ct === 'bullet') {
+    Plotly.newPlot(el, [{
+      type:'indicator', mode:'number+gauge+delta',
+      value: parseFloat(d.value)||0,
+      delta: { reference: parseFloat(d.target)||0 },
+      gauge: {
+        shape:'bullet', axis:{ range:[0, parseFloat(d.max)||100] },
+        threshold: { line:{color:'#ef4444',width:3}, thickness:.75,
+                     value: parseFloat(d.target)||0 },
+        bgcolor:'#f0f9ff', bar:{ color:'#0d6efd' }
+      }
+    }], { margin:{t:24,b:8,l:50,r:20},
+          height: Math.max((el.offsetHeight||100)-32, 70),
+          paper_bgcolor:'transparent', plot_bgcolor:'transparent' },
+    { displayModeBar:false, responsive:true });
+    return;
+  }
+
+  // Standard KPI card
+  const raw     = d.value !== undefined ? d.value
+                : (d.count !== undefined ? d.count : '—');
+  const isMoney = /revenue|amount|value|deal|earn|pay|price/i.test(comp.title||'');
+  let   display = raw;
+
+  if (typeof raw === 'number' || (typeof raw === 'string' && !isNaN(parseFloat(raw)))) {
+    const n = parseFloat(raw);
+    if (!isNaN(n)) {
+      if (isMoney) {
+        display = n >= 1e6 ? '$'+(n/1e6).toFixed(1)+'M'
+                : n >= 1e3 ? '$'+(n/1e3).toFixed(1)+'K'
+                : '$'+n.toLocaleString();
+      } else {
+        display = n >= 1e6 ? (n/1e6).toFixed(1)+'M'
+                : n >= 1e3 ? (n/1e3).toFixed(1)+'K'
+                : n.toLocaleString();
+      }
+    }
+  }
+
+  const trend      = d.trend || d.change || '';
+  const trendClass = trend ? (String(trend).includes('-') ? 'down' : 'up') : '';
+
+  el.innerHTML = `
+    <div class="kpi-widget">
+      ${d.icon ? `<div class="kpi-icon">${d.icon}</div>` : ''}
+      <div class="kpi-value">${escapeHtml(String(display))}</div>
+      <div class="kpi-subtitle">${escapeHtml(d.subtitle || comp.title || '')}</div>
+      ${trend ? `<div class="kpi-trend ${trendClass}">${trendClass==='up'?'&#9650; ':trendClass==='down'?'&#9660; ':''}${escapeHtml(String(trend))}</div>` : ''}
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PLOTLY CHART RENDERER
+   Uses a retry loop so the chart is never rendered into a zero-
+   height container — avoids the "tiny chart / huge white box" bug.
+════════════════════════════════════════════════════════════════ */
+function renderPlotlyChart(wid, comp) {
+  const el = document.getElementById(wid);
+  if (!el) return;
+
+  // ── Inner render — called once the container has real dimensions ────
+  function _doRender() {
+    const containerH = el.clientHeight || el.offsetHeight;
+    if (containerH < 30) return false;   // not painted yet → caller retries
+
+    const ct     = comp.chart_type;
+    const d      = comp.data || {};
+    // Leave 6 px inset at the bottom so chart never bleeds to card edge
+    const plotH  = Math.max(containerH - 6, 150);
+
+    const layout = {
+      margin: { t:12, b:44, l:44, r:12 },
+      paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+      height: plotH, autosize: true,
+      legend: { orientation:'h', y:-0.28, font:{ size:11 } },
+      font:   { family:'Segoe UI, system-ui, sans-serif', size:11 }
+    };
+    const cfg = {
+      displayModeBar:true, responsive:true,
+      modeBarButtonsToRemove:['sendDataToCloud','editInChartStudio'],
+      toImageButtonOptions:{format:'png',width:1200,height:700}
+    };
+
+    try {
+      switch (ct) {
+
+      case 'pie': case 'doughnut': case 'ring':
+        Plotly.newPlot(el, [{
+          type:'pie', labels: d.labels||[], values: d.values||[],
+          hole: ct !== 'pie' ? 0.45 : 0,
+          marker:{ colors: PALETTE },
+          textinfo:'percent+label', textposition:'inside',
+          hovertemplate:'%{label}: %{value} (%{percent})<extra></extra>'
+        }], { ...layout, margin:{t:8,b:16,l:8,r:8} }, cfg); break;
+
+      case 'bar': case 'column':
+        Plotly.newPlot(el, [{
+          type:'bar', x: d.labels||[], y: d.values||[],
+          marker:{ color:(d.values||[]).map((_,i)=>PALETTE[i%PALETTE.length]) },
+          text:(d.values||[]).map(v=>String(v)), textposition:'outside',
+          hovertemplate:'%{x}: %{y}<extra></extra>'
+        }], layout, cfg); break;
+
+      case 'horizontalBar':
+        Plotly.newPlot(el, [{
+          type:'bar', orientation:'h',
+          x: d.values||[], y: d.labels||[],
+          marker:{ color:(d.values||[]).map((_,i)=>PALETTE[i%PALETTE.length]) },
+          hovertemplate:'%{y}: %{x}<extra></extra>'
+        }], { ...layout, margin:{t:8,b:32,l:140,r:10} }, cfg); break;
+
+      case 'line':
+        Plotly.newPlot(el, [{
+          type:'scatter', mode:'lines+markers',
+          x: d.labels||[], y: d.values||[],
+          line:{ color:PALETTE[0], width:2.5 },
+          marker:{ size:6, color:PALETTE[0] }
+        }], layout, cfg); break;
+
+      case 'area':
+        Plotly.newPlot(el, [{
+          type:'scatter', mode:'lines+markers',
+          x: d.labels||[], y: d.values||[],
+          fill:'tozeroy', fillcolor:'rgba(59,130,246,.13)',
+          line:{ color:PALETTE[0], width:2 },
+          marker:{ size:5, color:PALETTE[0] }
+        }], layout, cfg); break;
+
+      case 'multiLine':
+        Plotly.newPlot(el,
+          (d.series||[]).map((s,i)=>({
+            type:'scatter', mode:'lines+markers', name: s.name,
+            x: d.labels||[], y: s.values||[],
+            line:{ color:PALETTE[i%PALETTE.length], width:2.5 },
+            marker:{ size:5, color:PALETTE[i%PALETTE.length] }
+          })),
+          layout, cfg); break;
+
+      case 'groupedBar':
+        Plotly.newPlot(el,
+          (d.series||[]).map((s,i)=>({
+            type:'bar', name: s.name,
+            x: d.labels||[], y: s.values||[],
+            marker:{ color:PALETTE[i%PALETTE.length] }
+          })),
+          { ...layout, barmode:'group' }, cfg); break;
+
+      case 'stacked': case 'stackedbar':
+        Plotly.newPlot(el,
+          (d.series||[]).map((s,i)=>({
+            type:'bar', name: s.name,
+            x: d.labels||[], y: s.values||[],
+            marker:{ color:PALETTE[i%PALETTE.length] }
+          })),
+          { ...layout, barmode:'stack' }, cfg); break;
+
+      case 'funnel': {
+        // Sort ascending so smallest value renders at top, largest at bottom
+        const _fPairs = (d.labels||[]).map((l,i)=>[l,(d.values||[])[i]??0]);
+        _fPairs.sort((a,b)=>a[1]-b[1]);   // smallest first → top of chart
+        const _fLabels=_fPairs.map(p=>p[0]), _fValues=_fPairs.map(p=>p[1]);
+        const _maxLabelLen = _fLabels.reduce((m, v) => Math.max(m, String(v ?? '').length), 0);
+        const _leftPad = Math.min(240, Math.max(110, _maxLabelLen * 7));
+        Plotly.newPlot(el, [{
+          type:'funnel',
+          y: _fLabels, x: _fValues,
+          textinfo:'value+percent initial',
+          textposition:'inside',
+          marker:{
+            color:_fLabels.map((_,i)=>PALETTE[i%PALETTE.length]),
+            line:{ color:'rgba(255,255,255,.4)', width:1 }
+          },
+          connector:{ line:{ color:'#dee2e6', width:2 } }
+        }], {
+          ...layout,
+          margin:{t:10,b:10,l:_leftPad,r:14},
+          yaxis:{ automargin:true, tickfont:{ size:11 } },
+          funnelmode:'stack'
+        }, cfg); break;
+      }
+
+      case 'scatter':
+        Plotly.newPlot(el, [{
+          type:'scatter', mode:'markers',
+          x: d.x||d.values||[], y: d.y||d.values2||[], text: d.labels||[],
+          marker:{
+            size:10, opacity:.8,
+            color:(d.labels||d.x||d.values||[]).map((_,i)=>PALETTE[i%PALETTE.length])
+          }
+        }], layout, cfg); break;
+
+      case 'bubble':
+        Plotly.newPlot(el, [{
+          type:'scatter', mode:'markers',
+          x: d.x||[], y: d.y||[], text: d.labels||[],
+          marker:{
+            size:(d.sizes||d.values||[]).map(v=>Math.max(8,Math.sqrt(v)*3)),
+            color:PALETTE, opacity:.75, sizemode:'diameter'
+          }
+        }], layout, cfg); break;
+
+      case 'radar': case 'spider': case 'web':
+        Plotly.newPlot(el, [{
+          type:'scatterpolar', fill:'toself',
+          r: d.values||[], theta: d.labels||[],
+          line:{ color:PALETTE[4] }, fillcolor:'rgba(168,85,247,.18)'
+        }], { ...layout, polar:{ radialaxis:{ visible:true } } }, cfg); break;
+
+      case 'heatmap':
+        Plotly.newPlot(el, [{
+          type:'heatmap',
+          z: d.values||[[]], x: d.x_labels||d.x||[], y: d.y_labels||d.y||[],
+          colorscale:'Blues', showscale:true
+        }], layout, cfg); break;
+
+      case 'histogram':
+        Plotly.newPlot(el, [{
+          type:'histogram', x: d.values||[],
+          marker:{ color:PALETTE[2] }, opacity:.85, autobinx:true
+        }], layout, cfg); break;
+
+      case 'polarArea':
+        Plotly.newPlot(el, [{
+          type:'barpolar',
+          r: d.values||[], theta: d.labels||[],
+          marker:{ color:PALETTE }
+        }], layout, cfg); break;
+
+      // ── Treemap ──────────────────────────────────────────────────────────
+      case 'treemap':
+        Plotly.newPlot(el, [{
+          type:'treemap',
+          labels:  d.labels  || [],
+          values:  d.values  || [],
+          parents: d.parents || (d.labels||[]).map(() => ''),
+          textinfo:'label+value+percent parent',
+          marker:{ colorscale:'Blues', showscale:false },
+          hovertemplate:'<b>%{label}</b><br>Value: %{value}<br>%{percentParent:.1%}<extra></extra>'
+        }], { ...layout, margin:{t:8,b:8,l:8,r:8} }, cfg); break;
+
+      // ── Sunburst ─────────────────────────────────────────────────────────
+      case 'sunburst':
+        Plotly.newPlot(el, [{
+          type:'sunburst',
+          labels:  d.labels  || [],
+          values:  d.values  || [],
+          parents: d.parents || (d.labels||[]).map(() => ''),
+          branchvalues:'total',
+          textinfo:'label+percent parent',
+          marker:{ colors:PALETTE },
+          hovertemplate:'<b>%{label}</b><br>Value: %{value}<br>%{percentParent:.1%}<extra></extra>'
+        }], { ...layout, margin:{t:8,b:8,l:8,r:8} }, cfg); break;
+
+      // ── Waterfall ────────────────────────────────────────────────────────
+      case 'waterfall':
+        Plotly.newPlot(el, [{
+          type:'waterfall',
+          orientation:'v',
+          x: d.labels||[],
+          y: d.values||[],
+          measure: d.measure || (d.values||[]).map((v,i,a) => i===a.length-1 ? 'total' : 'relative'),
+          text:(d.values||[]).map(v => (v>=0?'+':'')+Number(v).toLocaleString()),
+          textposition:'outside',
+          connector:{ line:{ color:'#dee2e6', width:1.5 } },
+          increasing:{ marker:{ color:'#22c55e' } },
+          decreasing:{ marker:{ color:'#ef4444' } },
+          totals:    { marker:{ color:'#3b82f6' } },
+          hovertemplate:'%{x}: %{y}<extra></extra>'
+        }], layout, cfg); break;
+
+      // ── Combination (bar + line) ─────────────────────────────────────────
+      case 'combination': case 'combo': {
+        const cSeries = d.series || [];
+        if (cSeries.length >= 2) {
+          const cTraces = cSeries.map((s,i) => {
+            const isLine = s.type === 'line' || i === cSeries.length-1;
+            return isLine
+              ? { type:'scatter', mode:'lines+markers', name:s.name,
+                  x:d.labels||[], y:s.values||[], yaxis:'y2',
+                  line:{ color:PALETTE[i%PALETTE.length], width:2.5 },
+                  marker:{ size:5 } }
+              : { type:'bar', name:s.name,
+                  x:d.labels||[], y:s.values||[],
+                  marker:{ color:PALETTE[i%PALETTE.length] } };
+          });
+          Plotly.newPlot(el, cTraces, {
+            ...layout,
+            yaxis2:{ overlaying:'y', side:'right', showgrid:false,
+                     title:'', tickfont:{size:10} },
+            barmode:'group'
+          }, cfg);
+        } else {
+          // Fallback to bar if no series
+          Plotly.newPlot(el, [{
+            type:'bar', x:d.labels||[], y:d.values||[],
+            marker:{ color:(d.values||[]).map((_,i)=>PALETTE[i%PALETTE.length]) }
+          }], layout, cfg);
+        }
+        break;
+      }
+
+      // ── Box Plot ─────────────────────────────────────────────────────────
+      case 'box': {
+        const boxSeries = d.series || [];
+        const boxTraces = boxSeries.length
+          ? boxSeries.map((s,i) => ({
+              type:'box', name:s.name, y:s.values||[],
+              marker:{ color:PALETTE[i%PALETTE.length] },
+              boxmean:'sd', jitter:0.3, pointpos:0, boxpoints:'outliers'
+            }))
+          : [{ type:'box', y:d.values||[], name:comp.title||'',
+               marker:{ color:'#0d6efd' }, boxmean:'sd', boxpoints:'outliers' }];
+        Plotly.newPlot(el, boxTraces, layout, cfg); break;
+      }
+
+      // ── Violin ───────────────────────────────────────────────────────────
+      case 'violin': {
+        const vSeries = d.series || [];
+        const vTraces = vSeries.length
+          ? vSeries.map((s,i) => ({
+              type:'violin', name:s.name, y:s.values||[],
+              marker:{ color:PALETTE[i%PALETTE.length] },
+              box:{ visible:true }, meanline:{ visible:true },
+              points:'outliers'
+            }))
+          : [{ type:'violin', y:d.values||[], name:comp.title||'',
+               marker:{ color:'#0d6efd' }, box:{ visible:true },
+               meanline:{ visible:true }, points:'outliers' }];
+        Plotly.newPlot(el, vTraces, layout, cfg); break;
+      }
+
+      // ── Butterfly (back-to-back horizontal bar) ───────────────────────
+      case 'butterfly': {
+        const bfSeries = d.series || [];
+        const leftS  = bfSeries[0] || { name:'Left',  values:d.values||[] };
+        const rightS = bfSeries[1] || { name:'Right', values:[] };
+        Plotly.newPlot(el, [
+          { type:'bar', orientation:'h', name:leftS.name,
+            x:(leftS.values||[]).map(v => -Math.abs(v)),
+            y:d.labels||[],
+            marker:{ color:PALETTE[0] },
+            text:(leftS.values||[]).map(v => String(Math.abs(v))),
+            textposition:'auto',
+            hovertemplate:'%{y}: %{customdata}<extra>'+escapeHtml(leftS.name)+'</extra>',
+            customdata:leftS.values||[] },
+          { type:'bar', orientation:'h', name:rightS.name,
+            x:rightS.values||[],
+            y:d.labels||[],
+            marker:{ color:PALETTE[1] },
+            hovertemplate:'%{y}: %{x}<extra>'+escapeHtml(rightS.name)+'</extra>' }
+        ], { ...layout, barmode:'overlay', margin:{t:8,b:32,l:140,r:10},
+             xaxis:{ tickformat:'~s' } }, cfg); break;
+      }
+
+      // ── Packed Bubble ─────────────────────────────────────────────────
+      case 'packedbubble': {
+        const pbLabels = d.labels||[];
+        const pbValues = d.values||[];
+        const cols5    = Math.ceil(Math.sqrt(pbLabels.length));
+        Plotly.newPlot(el, [{
+          type:'scatter', mode:'markers+text',
+          x:pbLabels.map((_,i) => (i%cols5)*2),
+          y:pbLabels.map((_,i) => Math.floor(i/cols5)*2),
+          text:pbLabels,
+          textposition:'middle center',
+          textfont:{ color:'#fff', size:11 },
+          marker:{
+            size:pbValues.map(v => Math.max(18, Math.sqrt(Math.abs(v))*5)),
+            color:pbLabels.map((_,i)=>PALETTE[i%PALETTE.length]),
+            sizemode:'diameter', opacity:0.85,
+            line:{ width:1.5, color:'rgba(255,255,255,.5)' }
+          },
+          hovertemplate:'<b>%{text}</b><br>Value: %{customdata}<extra></extra>',
+          customdata:pbValues
+        }], { ...layout, showlegend:false,
+              xaxis:{ visible:false }, yaxis:{ visible:false },
+              margin:{t:8,b:8,l:8,r:8} }, cfg); break;
+      }
+
+      // ── Half Pie / Half Ring ──────────────────────────────────────────
+      case 'halfpie': case 'halfring': case 'halfdoughnut':
+        Plotly.newPlot(el, [{
+          type:'pie',
+          labels:d.labels||[], values:d.values||[],
+          hole: (ct==='halfring'||ct==='halfdoughnut') ? 0.45 : 0,
+          direction:'clockwise', rotation:180,
+          marker:{ colors:PALETTE },
+          domain:{ x:[0,1], y:[0.4,1] },
+          textinfo:'label+percent', textposition:'inside',
+          hovertemplate:'%{label}: %{value} (%{percent})<extra></extra>'
+        }], { ...layout, margin:{t:4,b:4,l:8,r:8} }, cfg); break;
+
+      // ── Spider / Web (radar aliases) ──────────────────────────────────
+      case 'spider': case 'web':
+        Plotly.newPlot(el, [{
+          type:'scatterpolar', fill:'toself',
+          r:d.values||[], theta:d.labels||[],
+          line:{ color:PALETTE[4] }, fillcolor:'rgba(168,85,247,.18)'
+        }], { ...layout, polar:{ radialaxis:{ visible:true } } }, cfg); break;
+
+      // ── Report (alias for table) ───────────────────────────────────────
+      case 'report':
+      case 'pivot': case 'table': {
+        const cols = d.columns || (d.rows?.length ? Object.keys(d.rows[0]) : []);
+        const rows = d.rows || [];
+        // Explicit height so table scroll area fills the widget-body exactly
+        el.innerHTML = `<div style="overflow:auto;height:${containerH}px;padding:8px 10px;">
+          <table class="table table-sm table-hover table-bordered widget-table mb-0">
+            <thead class="table-primary">
+              <tr>${cols.map(c=>`<th class="text-nowrap">${escapeHtml(String(c))}</th>`).join('')}</tr>
+            </thead>
+            <tbody>
+              ${rows.map(row=>`<tr>${cols.map(c=>`<td>${escapeHtml(String(row[c]??''))}</td>`).join('')}</tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+        return true;   // no Plotly relayout needed for tables
+      }
+
+      default:   // fallback bar
+        Plotly.newPlot(el, [{
+          type:'bar', x: d.labels||[], y: d.values||[],
+          marker:{ color:(d.values||[]).map((_,i)=>PALETTE[i%PALETTE.length]) }
+        }], layout, cfg);
+    }
+
+    // After every Plotly chart: force autosize on the next animation frame
+    // so the plot fills the container even if dimensions shifted slightly.
+    requestAnimationFrame(() => {
+      const p = el.querySelector('.js-plotly-plot');
+      if (p) Plotly.relayout(p, { autosize: true });
+    });
+
+    } catch(e) {
+      el.innerHTML = `<div class="d-flex align-items-center justify-content-center h-100 text-muted small">
+        <div class="text-center">
+          <i class="fa-solid fa-triangle-exclamation text-warning d-block mb-1 fa-2x"></i>
+          Chart error: ${escapeHtml(e.message)}
+        </div>
+      </div>`;
+      console.error('[Chart]', e, comp);
+    }
+    return true;
+  } // end _doRender
+
+  // Try immediately; if the container has no height yet, retry via rAF
+  if (!_doRender()) {
+    let tries = 0;
+    function _retry() {
+      if (_doRender() || ++tries >= 20) return;
+      requestAnimationFrame(_retry);
+    }
+    requestAnimationFrame(_retry);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EXTRACT VISUALIZATION JSON
+════════════════════════════════════════════════════════════════ */
+function extractVisualization(text) {
+  if (!text) return null;
+  const re = /```(?:json)?\s*([\s\S]*?)```/gi;
+  let m, blocks = [];
+  while ((m = re.exec(text)) !== null) {
+    try { blocks.push(JSON.parse(m[1].trim())); } catch(_) {}
+  }
+  for (const b of blocks) {
+    if (b.dashboard === true || (b.components && Array.isArray(b.components))) return b;
+  }
+  for (const b of blocks) { if (b.chart_type) return b; }
+  try {
+    const si = text.indexOf('{'), ei = text.lastIndexOf('}');
+    if (si !== -1 && ei > si) {
+      const p = JSON.parse(text.slice(si, ei+1));
+      if (p.dashboard === true || p.chart_type || p.components) return p;
+    }
+  } catch(_) {}
+  return null;
+}
+
+function cleanJSON(text) {
+  if (!text) return '';
+  return text.replace(/```(?:json)?\s*[\s\S]*?```/gi,'').replace(/^\s*\n/gm,'').trim();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CHAT HELPERS
+════════════════════════════════════════════════════════════════ */
+function appendZiaMsg(role, content, isHTML = false) {
+  const msgs = document.getElementById('ziaMessages');
+  const div  = document.createElement('div');
+  div.className = `zia-msg d-flex gap-2 ${role==='user' ? 'zia-msg-user flex-row-reverse' : 'zia-msg-ai'}`;
+
+  let bubble;
+  if (isHTML) {
+    bubble = content;
+  } else if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+    bubble = DOMPurify.sanitize(marked.parse(content), { USE_PROFILES:{ html:true } });
+  } else {
+    bubble = escapeHtml(content).replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
+  }
+
+  if (role === 'ai') {
+    div.innerHTML = `<div class="zia-bot-avatar flex-shrink-0"><i class="fa-solid fa-robot"></i></div>
+      <div class="zia-bubble">${bubble}</div>`;
+  } else {
+    div.innerHTML = `<div class="zia-bubble">${bubble}</div>`;
+  }
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function appendZiaDashboardCard(title, kpiCount, chartCount, dashId) {
+  const msgs = document.getElementById('ziaMessages');
+  const desc = [];
+  if (kpiCount  > 0) desc.push(kpiCount  + ' KPI' + (kpiCount   !== 1 ? 's' : ''));
+  if (chartCount> 0) desc.push(chartCount + ' chart' + (chartCount !== 1 ? 's' : ''));
+
+  const div = document.createElement('div');
+  div.className = 'zia-msg d-flex gap-2 zia-msg-ai';
+  div.innerHTML = `
+    <div class="zia-bot-avatar flex-shrink-0"><i class="fa-solid fa-robot"></i></div>
+    <div class="zia-bubble" style="max-width:100%;">
+      <div class="small text-muted mb-1">Dashboard ready!</div>
+      <div class="zia-dash-card" onclick="toggleZia();switchTab('${dashId}')">
+        <div class="d-flex align-items-start gap-2">
+          <div class="rounded-2 p-1 d-flex align-items-center justify-content-center text-white"
+            style="background:#0d6efd;width:28px;height:28px;flex-shrink:0;">
+            <i class="fa-solid fa-chart-pie fa-xs"></i>
+          </div>
+          <div class="flex-grow-1 min-w-0">
+            <div class="fw-semibold small text-truncate">${escapeHtml(title)}</div>
+            <div class="text-muted" style="font-size:11px;">${desc.join(' · ') || 'Ready'}</div>
+          </div>
+          <span class="badge bg-primary-subtle text-primary small align-self-start">Open &#8594;</span>
+        </div>
+      </div>
+    </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+let ziaTypingEl = null;
+function showZiaTyping(statusText='') {
+  const msgs = document.getElementById('ziaMessages');
+  ziaTypingEl = document.createElement('div');
+  ziaTypingEl.className = 'zia-msg d-flex gap-2 zia-msg-ai';
+  ziaTypingEl.innerHTML = `
+    <div class="zia-bot-avatar flex-shrink-0"><i class="fa-solid fa-robot"></i></div>
+    <div class="zia-bubble">
+      <div class="zia-typing"><span></span><span></span><span></span></div>
+      ${statusText ? `<div class="text-muted mt-1" style="font-size:10px;">
+        <span class="agent-status agent-query me-1">Query Agent</span>
+        <span class="agent-status agent-mcp me-1">MCP Agent</span>
+        <span class="agent-status agent-viz">Viz Agent</span>
+      </div>` : ''}
+    </div>`;
+  msgs.appendChild(ziaTypingEl);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+function hideZiaTyping() {
+  if (ziaTypingEl) { ziaTypingEl.remove(); ziaTypingEl = null; }
+}
+
+function updateAgentStatus(stage) {
+  const sub = document.getElementById('ziaSubtitle');
+  if (!sub) return;
+  const stages = {
+    query: '&#x2B24; Query Agent running…',
+    mcp:   '&#x2B24; Fetching data from MCP…',
+    viz:   '&#x2B24; Building visualisations…',
+    done:  'Query &bull; Fetch &bull; Visualise'
+  };
+  sub.innerHTML = stages[stage] || stages.done;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SIDEBAR VIEW SWITCHER
+════════════════════════════════════════════════════════════════ */
+function showView(view, el) {
+  document.querySelectorAll('.sidebar-link').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  const titles = {
+    dashboard: '<span class="text-primary">Analytics</span> Dashboard',
+    reports:   '<span class="text-primary">Reports</span>',
+    analytics: '<span class="text-primary">Analytics</span>',
+    data:      '<span class="text-primary">CRM</span> Data'
+  };
+  if (!activeDashboardId)
+    document.getElementById('topbarTitle').innerHTML = titles[view] || titles.dashboard;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   UTILS
+════════════════════════════════════════════════════════════════ */
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                  .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escapeAttr(s) {
+  return String(s).replace(/'/g,"&#39;").replace(/"/g,'&quot;').replace(/\\/g,'&#92;');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BOOT
+════════════════════════════════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded', checkAuth);
+</script>
+</body>
+</html>
