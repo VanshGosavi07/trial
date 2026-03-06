@@ -36,6 +36,7 @@ Response payload shape:
 """
 
 import time
+import re
 from .query_agent      import QueryAgent
 from .mcp_agent        import MCPDataAgent
 from .viz_agent        import VizAgent
@@ -173,9 +174,16 @@ class AgentOrchestrator:
         elapsed = round(time.time() - t0, 2)
         print(f"[Orchestrator] Done in {elapsed}s ─ {len(widgets)} widget(s)")
 
-        # Single numeric answer → text only (no dashboard)
+        # Single numeric answer: keep text-only for plain Q&A, but return a
+        # KPI widget when user explicitly asks for KPI/card/widget or add/append.
         if intent == "numeric" and len(widgets) == 1:
-            return {"success": True, "message": prose, "dashboard": None}
+            explicit_widget_request = bool(re.search(
+                r"\b(kpi|metric|card|widget|dashboard|chart|graph|add|append|include|insert)\b",
+                user_prompt or "",
+                re.IGNORECASE,
+            ))
+            if not explicit_widget_request:
+                return {"success": True, "message": prose, "dashboard": None}
 
         # Everything else → prose + dashboard JSON
         dashboard_json = {

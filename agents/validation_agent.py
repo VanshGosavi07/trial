@@ -17,6 +17,7 @@ No external API calls — pure Python, fast.
 """
 
 import re
+from datetime import datetime
 from typing import Any
 
 
@@ -171,6 +172,14 @@ class ValidationAgent:
                 clean[key] = None
                 continue
 
+            # Date/time columns from Zoho often arrive as compact strings
+            # like "250220261106" (ddmmyyyyHHMM). Format them first and skip
+            # numeric coercion so leading zeros are not lost.
+            dt = self._coerce_datetime_like(key, sv)
+            if dt is not None:
+                clean[key] = dt
+                continue
+
             # Try numeric coercion
             num = self._coerce_numeric(sv)
             clean[key] = num if num is not None else sv
@@ -223,6 +232,52 @@ class ValidationAgent:
             return int(f) if f == int(f) else f
         except (ValueError, OverflowError):
             return None
+
+    def _coerce_datetime_like(self, key: str, value: str) -> str | None:
+        """
+        Parse compact Zoho datetime tokens for date/time fields.
+
+        Supported forms:
+          - ddmmyyyyHHMM       (12 digits)
+          - ddmmyyyyHHMMSS     (14 digits)
+          - yyyymmdd           (8 digits)
+          - numeric token missing one leading zero (11/13 digits)
+        """
+        key_l = (key or "").lower()
+        if not any(tok in key_l for tok in ("time", "date")):
+            return None
+
+        token = value.strip()
+        if not token:
+            return None
+
+        # Keep already-readable values as-is.
+        if any(sep in token for sep in ("-", "/", ":", " ")):
+            return token
+
+        # Compact numeric datetime/date tokens
+        if not re.fullmatch(r"\d{8,14}", token):
+            return None
+
+        # Leading zero may have been dropped by upstream conversion.
+        if len(token) in (11, 13):
+            token = "0" + token
+
+        try:
+            if len(token) == 14:
+                dt = datetime.strptime(token, "%d%m%Y%H%M%S")
+                return dt.strftime("%Y-%m-%d %H:%M:%S")
+            if len(token) == 12:
+                dt = datetime.strptime(token, "%d%m%Y%H%M")
+                return dt.strftime("%Y-%m-%d %H:%M")
+            if len(token) == 8:
+                # Prefer yyyymmdd for date-only fields in analytics exports.
+                dt = datetime.strptime(token, "%Y%m%d")
+                return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+
+        return None
 
     # ─────────────────────────────────────────────────────────────────────────
 

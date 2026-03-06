@@ -204,24 +204,236 @@ Valid output_type values:
     ) -> dict | None:
         prompt = (user_prompt or "").lower()
 
+        # "Add one more chart in this dashboard" should never trigger
+        # a full dashboard deterministic template.
+        if self._is_incremental_chart_add_request(prompt):
+            return self._build_incremental_chart_plan(available_tables, table_schemas, prompt)
+
         is_dashboard_req = bool(
             re.search(r"\b(dashboard|overview|complete|full|entire)\b", prompt)
         )
         is_table_req = bool(re.search(r"\b(table|report|list|rows?)\b", prompt))
         is_leads_req = "lead" in prompt
+        is_kpi_req = bool(re.search(r"\b(kpi|metric|number|count|total)\b", prompt))
+
+        # KPI-style asks should not be downgraded into table reports,
+        # even when users include the word "report" in natural language.
+        if is_leads_req and is_kpi_req:
+            return self._build_leads_kpi_plan(available_tables, table_schemas, prompt)
 
         if is_table_req and is_leads_req:
-            return self._build_leads_table_plan(available_tables, table_schemas)
+            return self._build_leads_table_plan(available_tables, table_schemas, prompt)
 
         if is_dashboard_req and is_leads_req:
             return self._build_leads_dashboard_plan(available_tables, table_schemas)
 
         return None
 
+    def _build_leads_kpi_plan(
+        self,
+        tables: list[str],
+        table_schemas: dict[str, list[str]] | None,
+        prompt: str,
+    ) -> dict:
+        """Deterministic single-KPI planner for leads-focused metric requests."""
+        t_leads = self._pick_best_table(tables, ["leads"], ["lead"])
+        cols = (table_schemas or {}).get(t_leads, [])
+
+        converted_deal_col = self._choose_column(cols, ["converted deal", "converted_deal"])
+        is_converted_col = self._choose_column(cols, ["is converted", "converted"])
+
+        asks_converted = bool(re.search(r"\b(converted|conversion|converted\s+to\s+deals?)\b", prompt))
+        wants_bullet = bool(re.search(r"\bbullet\b", prompt or "", re.IGNORECASE))
+
+        if asks_converted and converted_deal_col:
+            sql = (
+                f'SELECT COUNT("{converted_deal_col}") AS "Converted Leads" '
+                f'FROM "{t_leads}"'
+            )
+            label = "Converted Leads"
+            desc = "Leads converted into deals"
+        elif asks_converted and is_converted_col:
+            sql = (
+                f'SELECT COUNT(CASE WHEN "{is_converted_col}" = \'true\' THEN 1 END) '
+                f'AS "Converted Leads" FROM "{t_leads}"'
+            )
+            label = "Converted Leads"
+            desc = "Leads converted into deals"
+        else:
+            sql = f'SELECT COUNT(*) AS "Total Leads" FROM "{t_leads}"'
+            label = "Total Leads"
+            desc = "Total number of leads"
+
+        return {
+            "intent": "numeric",
+            "title": "Leads KPI",
+            "components": [
+                {
+                    "id": "leads_kpi",
+                    "label": label,
+                    "output_type": "bullet" if wants_bullet else "kpi",
+                    "sql": sql,
+                    "description": desc,
+                }
+            ],
+        }
+
+    def _build_incremental_chart_plan(
+        self,
+        tables: list[str],
+        table_schemas: dict[str, list[str]] | None,
+        prompt: str,
+    ) -> dict:
+        """
+        Deterministic single-chart plan for "add chart" follow-up asks.
+        Keeps updates incremental instead of rebuilding whole dashboards.
+        """
+        t_leads = self._pick_best_table(tables, ["leads"], ["lead"])
+        cols = (table_schemas or {}).get(t_leads, [])
+
+        created_col = self._choose_column(cols, ["created time", "created", "created date"])
+        converted_time_col = self._choose_column(cols, ["converted date time", "lead conversion time", "converted time"])
+        converted_deal_col = self._choose_column(cols, ["converted deal", "converted_deal"])
+        is_converted_col = self._choose_column(cols, ["is converted", "converted"])
+        status_col = self._choose_column(cols, ["lead status", "status", "stage"])
+        source_col = self._choose_column(cols, ["lead source", "source"])
+
+        wants_month = bool(re.search(r"\b(month|monthly|monthwise|by\s+month|over\s+time|trend)\b", prompt))
+        asks_converted = bool(re.search(r"\b(converted|conversion|converted\s+to\s+deals?)\b", prompt or "", re.IGNORECASE))
+        year_match = re.search(r"\b(20\d{2})\b", prompt)
+        year_filter = f' WHERE YEAR("{created_col}") = {year_match.group(1)}' if (created_col and year_match) else ""
+
+        if asks_converted:
+            conversion_filter = None
+            if converted_deal_col:
+                conversion_filter = f'"{converted_deal_col}" IS NOT NULL'
+            elif is_converted_col:
+                conversion_filter = f'"{is_converted_col}" = \'true\''
+
+            # Prefer a conversion trend when user explicitly asks trend/month.
+            if conversion_filter and (wants_month or converted_time_col):
+                trend_col = converted_time_col or created_col
+                if trend_col:
+                    trend_year_filter = (
+                        f' AND YEAR("{trend_col}") = {year_match.group(1)}' if year_match else ""
+                    )
+                    return {
+                        "intent": "chart",
+                        "title": "Converted Leads Trend",
+                        "components": [
+                            {
+                                "id": "converted_leads_by_month",
+                                "label": "Converted Leads by Month",
+                                "output_type": "line",
+                                "sql": (
+                                    f'SELECT DATE_FORMAT("{trend_col}", \'%Y-%m\') AS "Month", COUNT(*) AS "Count" '
+                                    f'FROM "{t_leads}" '
+                                    f'WHERE {conversion_filter}{trend_year_filter} '
+                                    f'GROUP BY "Month" ORDER BY "Month" ASC'
+                                ),
+                                "description": "Monthly lead conversions to deals",
+                            }
+                        ],
+                    }
+
+            if conversion_filter and source_col:
+                return {
+                    "intent": "chart",
+                    "title": "Converted Leads",
+                    "components": [
+                        {
+                            "id": "converted_leads_by_source",
+                            "label": "Converted Leads by Source",
+                            "output_type": "bar",
+                            "sql": (
+                                f'SELECT "{source_col}", COUNT(*) AS "Count" '
+                                f'FROM "{t_leads}" '
+                                f'WHERE {conversion_filter} '
+                                f'GROUP BY "{source_col}" '
+                                f'ORDER BY "Count" DESC'
+                            ),
+                            "description": "Lead conversions grouped by source",
+                        }
+                    ],
+                }
+
+            if conversion_filter and status_col:
+                return {
+                    "intent": "chart",
+                    "title": "Converted Leads",
+                    "components": [
+                        {
+                            "id": "converted_leads_by_status",
+                            "label": "Converted Leads by Status",
+                            "output_type": "bar",
+                            "sql": (
+                                f'SELECT "{status_col}", COUNT(*) AS "Count" '
+                                f'FROM "{t_leads}" '
+                                f'WHERE {conversion_filter} '
+                                f'GROUP BY "{status_col}" '
+                                f'ORDER BY "Count" DESC'
+                            ),
+                            "description": "Converted leads grouped by status",
+                        }
+                    ],
+                }
+
+        if created_col and wants_month:
+            return {
+                "intent": "chart",
+                "title": "Leads Trend",
+                "components": [
+                    {
+                        "id": "leads_created_by_month",
+                        "label": "Leads Created by Month",
+                        "output_type": "line",
+                        "sql": (
+                            f'SELECT DATE_FORMAT("{created_col}", \'%Y-%m\') AS "Month", COUNT(*) AS "Count" '
+                            f'FROM "{t_leads}"'
+                            f'{year_filter}'
+                            f' GROUP BY "Month" ORDER BY "Month" ASC'
+                        ),
+                        "description": "Monthly leads created trend",
+                    }
+                ],
+            }
+
+        # Generic fallback: one category chart, still single-widget.
+        group_col = status_col or created_col
+        if group_col == created_col:
+            sql = (
+                f'SELECT DATE_FORMAT("{created_col}", \'%Y-%m\') AS "Month", COUNT(*) AS "Count" '
+                f'FROM "{t_leads}" GROUP BY "Month" ORDER BY "Month" ASC'
+            )
+            output_type = "line"
+            label = "Leads Created by Month"
+        else:
+            sql = (
+                f'SELECT "{group_col}", COUNT(*) AS "Count" '
+                f'FROM "{t_leads}" GROUP BY "{group_col}" ORDER BY "Count" DESC'
+            )
+            output_type = "bar"
+            label = "Leads by Status"
+
+        return {
+            "intent": "chart",
+            "title": "Leads Chart",
+            "components": [
+                {
+                    "id": "incremental_leads_chart",
+                    "label": label,
+                    "output_type": output_type,
+                    "sql": sql,
+                    "description": "Single chart for incremental dashboard update",
+                }
+            ],
+        }
+
     def _build_leads_table_plan(
         self,
         tables: list[str],
         table_schemas: dict[str, list[str]] | None,
+        prompt: str = "",
     ) -> dict:
         t_leads = self._pick_best_table(tables, ["leads"], ["lead"])
         cols = (table_schemas or {}).get(t_leads, [])
@@ -239,9 +451,26 @@ Valid output_type values:
         # Add common lead context columns if present.
         source_col = self._choose_column(cols, ["lead source", "source"])
         created_col = self._choose_column(cols, ["created time", "created", "created date"])
+        converted_deal_col = self._choose_column(cols, ["converted deal", "converted_deal"])
+        is_converted_col = self._choose_column(cols, ["is converted", "converted"])
         for c in (source_col, created_col):
             if c and c not in selected:
                 selected.append(c)
+
+        asks_converted = bool(
+            re.search(r"\b(converted|conversion|converted\s+to\s+deals?)\b", prompt or "", re.IGNORECASE)
+        )
+
+        conversion_where = ""
+        if asks_converted:
+            if converted_deal_col:
+                conversion_where = f' WHERE "{converted_deal_col}" IS NOT NULL'
+            elif is_converted_col:
+                conversion_where = f' WHERE "{is_converted_col}" = \'true\''
+
+            for c in (converted_deal_col, is_converted_col):
+                if c and c not in selected:
+                    selected.append(c)
 
         if not selected:
             if cols:
@@ -254,18 +483,23 @@ Valid output_type values:
 
         return {
             "intent": "table",
-            "title": "Leads Report",
+            "title": "Converted Leads Report" if asks_converted else "Leads Report",
             "components": [
                 {
                     "id": "leads_report_table",
-                    "label": "Leads Report",
+                    "label": "Converted Leads Report" if asks_converted else "Leads Report",
                     "output_type": "table",
                     "sql": (
                         f"SELECT {select_sql} "
                         f"FROM \"{t_leads}\" "
+                        f"{conversion_where} "
                         f"ORDER BY \"{order_col}\" DESC LIMIT 50"
                     ),
-                    "description": "Lead records with requested fields",
+                    "description": (
+                        "Lead records that converted to deals"
+                        if asks_converted
+                        else "Lead records with requested fields"
+                    ),
                 }
             ],
         }
@@ -304,7 +538,7 @@ Valid output_type values:
             {
                 "id": "contactable_leads",
                 "label": "Contactable Leads",
-                "output_type": "kpi",
+                "output_type": "numeric",
                 "sql": (
                     f'SELECT COUNT("{email_col}") AS "Contactable Leads" FROM "{t_leads}"'
                     if email_col
@@ -315,7 +549,7 @@ Valid output_type values:
             {
                 "id": "lead_status_count",
                 "label": "Lead Statuses",
-                "output_type": "kpi",
+                "output_type": "gauge",
                 "sql": (
                     f'SELECT COUNT(DISTINCT "{status_col}") AS "Lead Statuses" FROM "{t_leads}"'
                     if status_col
@@ -326,7 +560,7 @@ Valid output_type values:
             {
                 "id": "lead_source_count",
                 "label": "Lead Sources",
-                "output_type": "kpi",
+                "output_type": "dial",
                 "sql": (
                     f'SELECT COUNT(DISTINCT "{source_col}") AS "Lead Sources" FROM "{t_leads}"'
                     if source_col
@@ -617,6 +851,22 @@ Valid output_type values:
 
         requested_types = self._requested_output_types(user_prompt)
         prompt_lower = (user_prompt or "").lower()
+        is_incremental_add = self._is_incremental_chart_add_request(prompt_lower)
+
+        # Force follow-up add requests to a single non-KPI component.
+        if is_incremental_add:
+            plan["intent"] = "chart"
+            non_kpi = [
+                c for c in components
+                if c.get("output_type") not in {"kpi", "numeric", "gauge", "dial", "bullet"}
+            ]
+            chosen = non_kpi[0] if non_kpi else components[0]
+
+            if requested_types and chosen.get("output_type") not in requested_types:
+                chosen["output_type"] = next(iter(requested_types))
+
+            plan["components"] = [chosen]
+            return plan
 
         is_dashboard_prompt = self._is_dashboard_request(prompt_lower)
         is_single_chart_prompt = self._is_single_chart_request(prompt_lower)
@@ -723,7 +973,34 @@ Valid output_type values:
     def _is_dashboard_request(self, prompt: str) -> bool:
         if not prompt:
             return False
+        if self._is_incremental_chart_add_request(prompt):
+            return False
         return bool(re.search(r"\b(dashboard|overview|complete|full|entire|all metrics|summary dashboard)\b", prompt))
+
+    def _is_incremental_chart_add_request(self, prompt: str) -> bool:
+        if not prompt:
+            return False
+
+        has_widget_term = bool(re.search(r"\b(chart|graph|plot|kpi|widget|table|report)\b", prompt))
+        asks_single = bool(re.search(r"\b(one|single|one\s+more|another|more)\b", prompt))
+        add_verb = bool(re.search(r"\b(add|append|include|insert)\b", prompt))
+        create_verb = bool(re.search(r"\b(create|make|put)\b", prompt))
+        refers_existing_dash = bool(re.search(r"\b(this|same|current|existing)\s+dashboard\b", prompt))
+
+        if not has_widget_term:
+            return False
+
+        # Strong signal: explicit add-like verb + either existing dashboard context
+        # or single-item language ("add one more chart").
+        if add_verb and (refers_existing_dash or asks_single):
+            return True
+
+        # For create/make/put, require explicit existing dashboard context to avoid
+        # hijacking "create dashboard ..." as an incremental add request.
+        if create_verb and refers_existing_dash and asks_single:
+            return True
+
+        return False
 
     def _is_single_chart_request(self, prompt: str) -> bool:
         if not prompt:
@@ -782,6 +1059,9 @@ Valid output_type values:
 
         patterns = {
             "kpi": [r"\bkpi\b", r"\bmetric\b", r"\bscore\b"],
+            "bullet": [r"\bbullet\b", r"\bbullet\s*kpi\b"],
+            "gauge": [r"\bgauge\b"],
+            "dial": [r"\bdial\b"],
             "line": [r"\bline\s*chart\b", r"\bline\s*graph\b", r"\btrend\b"],
             "bar": [r"\bbar\s*chart\b", r"\bbar\s*graph\b", r"\bcolumn\s*chart\b"],
             "pie": [r"\bpie\s*chart\b", r"\bdoughnut\b", r"\bdonut\b", r"\bring\s*chart\b"],
@@ -826,21 +1106,21 @@ Valid output_type values:
                     {
                         "id":          "total_deals",
                         "label":       "Total Deals",
-                        "output_type": "kpi",
+                        "output_type": "numeric",
                         "sql":         f'SELECT COUNT(*) AS "Total Deals" FROM "{t_deals}"',
                         "description": "Total number of deals",
                     },
                     {
                         "id":          "total_contacts",
                         "label":       "Total Contacts",
-                        "output_type": "kpi",
+                        "output_type": "gauge",
                         "sql":         f'SELECT COUNT(*) AS "Total Contacts" FROM "{t_contacts}"',
                         "description": "Total number of contacts",
                     },
                     {
                         "id":          "total_accounts",
                         "label":       "Total Accounts",
-                        "output_type": "kpi",
+                        "output_type": "dial",
                         "sql":         f'SELECT COUNT(*) AS "Total Accounts" FROM "{t_accounts}"',
                         "description": "Total number of accounts",
                     },
@@ -989,21 +1269,21 @@ Valid output_type values:
                 {
                     "id":          "total_deals",
                     "label":       "Total Deals",
-                    "output_type": "kpi",
+                    "output_type": "numeric",
                     "sql":         f'SELECT COUNT(*) AS "Total Deals" FROM "{t_deals}"',
                     "description": "Total number of deals",
                 },
                 {
                     "id":          "total_contacts",
                     "label":       "Total Contacts",
-                    "output_type": "kpi",
+                    "output_type": "gauge",
                     "sql":         f'SELECT COUNT(*) AS "Total Contacts" FROM "{t_contacts}"',
                     "description": "Total number of contacts",
                 },
                 {
                     "id":          "total_accounts",
                     "label":       "Total Accounts",
-                    "output_type": "kpi",
+                    "output_type": "dial",
                     "sql":         f'SELECT COUNT(*) AS "Total Accounts" FROM "{t_accounts}"',
                     "description": "Total number of accounts",
                 },

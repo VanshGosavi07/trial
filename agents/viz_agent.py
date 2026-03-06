@@ -142,9 +142,9 @@ class VizAgent:
 
         layout = _LAYOUT.get(otype, {"w": 6, "h": 5})
 
-        # ── KPI / Numeric ──────────────────────────────────────────────────
-        if otype in ("kpi", "numeric"):
-            return self._kpi_widget(label, rows, cols, layout)
+        # ── KPI family (card / gauge / dial / bullet) ─────────────────────
+        if otype in ("kpi", "numeric", "gauge", "dial", "bullet"):
+            return self._kpi_widget(label, rows, cols, otype, layout)
 
         # ── Table / Pivot ──────────────────────────────────────────────────
         if otype in ("table", "pivot"):
@@ -258,7 +258,7 @@ class VizAgent:
         return "bar"
 
     # ── KPI ───────────────────────────────────────────────────────────────────
-    def _kpi_widget(self, title, rows, cols, layout):
+    def _kpi_widget(self, title, rows, cols, otype, layout):
         if not rows or not cols:
             return self._empty_widget(title, "kpi")
         row = rows[0]
@@ -273,8 +273,30 @@ class VizAgent:
             val = str(raw) if raw is not None else "—"
 
         subtitle = col if col.lower() not in title.lower() else ""
+
+        # Gauge/Dial/Bullet need numeric payload for Plotly indicator rendering.
+        if otype in ("gauge", "dial", "bullet"):
+            num_val = self._to_num(raw)
+            max_val = self._suggest_kpi_max(num_val)
+            payload = {
+                "value": num_val,
+                "subtitle": subtitle,
+                "icon": self._kpi_icon(title),
+                "min": 0,
+                "max": max_val,
+            }
+            if otype == "bullet":
+                payload["target"] = max(1, int(max_val * 0.75))
+
+            return {
+                "chart_type": otype,
+                "title": title,
+                "data": payload,
+                **layout,
+            }
+
         return {
-            "chart_type": "kpi",
+            "chart_type": otype if otype in ("kpi", "numeric") else "kpi",
             "title": title,
             "data": {
                 "value":    val,
@@ -283,6 +305,26 @@ class VizAgent:
             },
             **layout,
         }
+
+    @staticmethod
+    def _suggest_kpi_max(value: float | int) -> int:
+        """Pick a readable gauge max slightly above the current value."""
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return 100
+
+        if v <= 0:
+            return 100
+        if v <= 10:
+            return 10
+        if v <= 100:
+            return 100
+        if v <= 1_000:
+            return 1_000
+        if v <= 10_000:
+            return 10_000
+        return int(v * 1.25)
 
     # ── Table ─────────────────────────────────────────────────────────────────
     def _table_widget(self, title, rows, cols, layout):

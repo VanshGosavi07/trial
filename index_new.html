@@ -18,6 +18,8 @@
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <!-- html2canvas (widget export) -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <!-- jsPDF (dashboard PDF export) -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
   <script>
     if (typeof marked !== 'undefined') marked.use({ breaks: true, gfm: true });
@@ -68,11 +70,12 @@
     /* widget-body: small top pad so chart never clips header, breathing room at bottom */
     .widget-body { flex:1;overflow:hidden;min-height:0;padding:4px 0 8px 0; }
 
-    /* ── KPI row cards (Bootstrap static row) ────────────────── */
+    /* ── KPI cards ────────────────────────────────────────────── */
     .kpi-row-card { background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;height:100%;min-height:115px;transition:box-shadow .2s;display:flex;flex-direction:column; }
     .kpi-row-card:hover { box-shadow:0 5px 20px rgba(0,0,0,.12); }
     .kpi-card-header { background:#fafafa;flex-shrink:0; }
     .kpi-row-card .kpi-widget { flex:1; }
+    .widget-title { white-space:normal; overflow-wrap:anywhere; word-break:break-word; line-height:1.2; }
 
     /* ── Section divider (label only, no horizontal line) ──────── */
     .section-divider { display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.06em;padding:14px 0 6px 0;margin:0; }
@@ -89,7 +92,7 @@
     /* ── Table in widget ─────────────────────────────────────── */
     .widget-table { width:100%;border-collapse:collapse;font-size:12px; }
     .widget-table thead { background:#0d6efd;color:#fff;position:sticky;top:0; }
-    .widget-table th,.widget-table td { padding:6px 10px;border:1px solid #dee2e6;text-align:left; }
+    .widget-table th,.widget-table td { padding:6px 10px;border:1px solid #dee2e6;text-align:left;white-space:normal;overflow-wrap:anywhere;word-break:break-word; }
     .widget-table tbody tr:nth-child(even) { background:#f8f9ff; }
     .widget-table tbody tr:hover { background:#ddeeff; }
 
@@ -115,6 +118,13 @@
     /* ── Utilities ───────────────────────────────────────────── */
     .hidden { display:none !important; }
     body { background:#f0f2f5 !important; }
+
+    .view-mode .gs-drag-handle .dropdown,
+    .view-mode .gs-drag-handle .rename-control,
+    .view-mode .gs-drag-handle .btn-danger,
+    .view-mode .ui-resizable-handle {
+      display: none !important;
+    }
 
     @media(max-width:600px) {
       #sidebar   { display:none !important; }
@@ -173,11 +183,23 @@
       <button class="btn btn-primary btn-sm" onclick="newDashboard()" title="Create a blank dashboard tab">
         <i class="fa-solid fa-plus me-1"></i>New Dashboard
       </button>
-      <button class="btn btn-outline-success btn-sm hidden" id="exportBtn" onclick="exportDashboard()">
-        <i class="fa-solid fa-file-export me-1"></i>Export
+      <button class="btn btn-outline-dark btn-sm hidden" id="renameDashboardBtn" onclick="renameDashboard()">
+        <i class="fa-solid fa-pen me-1"></i>Rename Dashboard
       </button>
-      <button class="btn btn-outline-secondary btn-sm hidden" id="refreshBtn" onclick="refreshCurrentDashboard()">
-        <i class="fa-solid fa-arrows-rotate me-1"></i>Refresh
+      <div class="btn-group hidden" id="exportBtn">
+        <button class="btn btn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="fa-solid fa-file-export me-1"></i>Export
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+          <li><button class="dropdown-item" type="button" onclick="exportDashboard('png')">Export PNG</button></li>
+          <li><button class="dropdown-item" type="button" onclick="exportDashboard('pdf')">Export PDF</button></li>
+        </ul>
+      </div>
+      <button class="btn btn-outline-secondary btn-sm hidden" id="viewModeBtn" onclick="toggleViewMode(true)">
+        <i class="fa-solid fa-eye me-1"></i>View Mode
+      </button>
+      <button class="btn btn-primary btn-sm hidden" id="editModeBtn" onclick="toggleViewMode(false)">
+        <i class="fa-solid fa-pencil me-1"></i>Edit Dashboard
       </button>
     </div>
   </nav>
@@ -305,7 +327,6 @@
 /* ═══════════════════════════════════════════════════════════════
    STATE
 ════════════════════════════════════════════════════════════════ */
-let conversationHistory   = [];
 let dashboards            = {};      // id → { title, components, gridInstance }
 let activeDashboardId     = null;
 let dashboardCounter      = 0;
@@ -313,6 +334,21 @@ let ziaOpen               = false;
 let pendingDashboardUpdate = null;
 let pendingUpdateMode      = null;
 let widgetComponents       = {};     // wid → { comp, gsType }
+let isViewMode             = false;
+
+const GLOBAL_CHAT_KEY = '__global__';
+const DEFAULT_WELCOME_MD =
+  "Hi! I'm your **Analytics AI Agent**.\n\n" +
+  "I use a **multi-agent pipeline** to understand your request, fetch real data from Zoho Analytics, and build " +
+  "**interactive dashboards** with drag-and-drop widgets.\n\n" +
+  "What would you like to explore?";
+
+let chatSessions = {
+  [GLOBAL_CHAT_KEY]: {
+    history: [],
+    transcript: [{ role: 'ai', content: DEFAULT_WELCOME_MD, isHTML: false }]
+  }
+};
 
 const PALETTE = [
   '#3b82f6','#22c55e','#f97316','#a855f7','#ef4444',
@@ -366,6 +402,214 @@ function askZia(prompt) {
   sendZiaMessage();
 }
 
+function _newComponentId() {
+  return 'cmp_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now();
+}
+
+function assignComponentId(comp) {
+  if (!comp) return comp;
+  if (!comp._componentId) comp._componentId = _newComponentId();
+  return comp;
+}
+
+function ensureComponentIds(dash) {
+  if (!dash || !Array.isArray(dash.components)) return;
+  dash.components.forEach(assignComponentId);
+}
+
+function captureDashboardLayout(dashId) {
+  const dash = dashboards[dashId];
+  if (!dash) return;
+
+  dash.chartLayout = dash.chartLayout || {};
+  dash.kpiLayout = dash.kpiLayout || {};
+
+  const capture = (grid, target, type) => {
+    if (!grid || !grid.engine || !Array.isArray(grid.engine.nodes)) return;
+    for (const node of grid.engine.nodes) {
+      const el = node?.el;
+      if (!el) continue;
+      const wid = el.querySelector('.widget-body')?.id || el.querySelector('[id^="w_"]')?.id;
+      const info = wid ? widgetComponents[wid] : null;
+      if (!info || info.gsType !== type) continue;
+      const cid = info.comp?._componentId;
+      if (!cid) continue;
+      target[cid] = {
+        x: Number.isFinite(node.x) ? node.x : 0,
+        y: Number.isFinite(node.y) ? node.y : 0,
+        w: Number.isFinite(node.w) ? node.w : 4,
+        h: Number.isFinite(node.h) ? node.h : 3,
+      };
+    }
+  };
+
+  capture(dash.gridInstance, dash.chartLayout, 'chart');
+  capture(dash.kpiGridInstance, dash.kpiLayout, 'kpi');
+}
+
+function updateDashboardActionButtons() {
+  const hasActiveDashboard = !!activeDashboardId && !!dashboards[activeDashboardId];
+  document.getElementById('exportBtn').classList.toggle('hidden', !hasActiveDashboard);
+  document.getElementById('renameDashboardBtn').classList.toggle('hidden', !hasActiveDashboard || isViewMode);
+  document.getElementById('viewModeBtn').classList.toggle('hidden', !hasActiveDashboard || isViewMode);
+  document.getElementById('editModeBtn').classList.toggle('hidden', !hasActiveDashboard || !isViewMode);
+}
+
+function applyDashboardMode() {
+  const hasActiveDashboard = !!activeDashboardId && !!dashboards[activeDashboardId];
+  const dash = hasActiveDashboard ? dashboards[activeDashboardId] : null;
+  const mount = document.getElementById('dashboardMount');
+
+  mount.classList.toggle('view-mode', !!dash && isViewMode);
+  document.getElementById('ziaFab').classList.toggle('hidden', !!dash && isViewMode);
+
+  if (!dash) {
+    if (ziaOpen) toggleZia();
+    updateDashboardActionButtons();
+    return;
+  }
+
+  if (dash.gridInstance) {
+    dash.gridInstance.enableMove(!isViewMode);
+    dash.gridInstance.enableResize(!isViewMode);
+  }
+  if (dash.kpiGridInstance) {
+    dash.kpiGridInstance.enableMove(!isViewMode);
+    dash.kpiGridInstance.enableResize(!isViewMode);
+  }
+
+  if (isViewMode && ziaOpen) toggleZia();
+  updateDashboardActionButtons();
+}
+
+function toggleViewMode(viewMode) {
+  isViewMode = !!viewMode;
+  applyDashboardMode();
+}
+
+function refreshDashboardTitle(dashId) {
+  const dash = dashboards[dashId];
+  if (!dash) return;
+
+  const tabLabel = document.querySelector(`#tab_${dashId} span`);
+  if (tabLabel) tabLabel.textContent = dash.title;
+
+  if (activeDashboardId === dashId) {
+    document.getElementById('topbarTitle').innerHTML =
+      `<span class="text-primary">Analytics</span> &mdash; ${escapeHtml(dash.title)}`;
+  }
+}
+
+function renameDashboard() {
+  if (!activeDashboardId || !dashboards[activeDashboardId] || isViewMode) return;
+  const dash = dashboards[activeDashboardId];
+  const nextTitle = window.prompt('Enter dashboard name', dash.title || 'Dashboard');
+  if (nextTitle === null) return;
+
+  const cleanTitle = nextTitle.trim();
+  if (!cleanTitle) return;
+
+  dash.title = cleanTitle;
+  refreshDashboardTitle(activeDashboardId);
+}
+
+function renameComponent(componentId) {
+  if (!activeDashboardId || !dashboards[activeDashboardId] || isViewMode || !componentId) return;
+  const dash = dashboards[activeDashboardId];
+  const comp = (dash.components || []).find(item => item?._componentId === componentId);
+  if (!comp) return;
+
+  const nextTitle = window.prompt('Enter widget name', comp.title || 'Widget');
+  if (nextTitle === null) return;
+
+  const cleanTitle = nextTitle.trim();
+  if (!cleanTitle) return;
+
+  comp.title = cleanTitle;
+  buildGrid(activeDashboardId);
+}
+
+function captureDashboardSnapshot() {
+  const mount = document.getElementById('dashboardMount');
+  if (!activeDashboardId || !mount || typeof html2canvas === 'undefined') {
+    return Promise.reject(new Error('Dashboard export is not available.'));
+  }
+
+  const canvasArea = document.getElementById('canvasArea');
+  const previousOverflow = canvasArea.style.overflowY;
+  const previousScrollTop = canvasArea.scrollTop;
+
+  canvasArea.style.overflowY = 'visible';
+  canvasArea.scrollTop = 0;
+
+  return html2canvas(mount, {
+    backgroundColor:'#f0f2f5',
+    scale: 1.5,
+    useCORS: true,
+    windowWidth: Math.max(mount.scrollWidth, mount.offsetWidth),
+    windowHeight: Math.max(mount.scrollHeight, mount.offsetHeight)
+  }).finally(() => {
+    canvasArea.style.overflowY = previousOverflow;
+    canvasArea.scrollTop = previousScrollTop;
+  });
+}
+
+function currentChatKey() {
+  return activeDashboardId || GLOBAL_CHAT_KEY;
+}
+
+function getOrCreateChatSession(key) {
+  const sid = key || GLOBAL_CHAT_KEY;
+  if (!chatSessions[sid]) {
+    chatSessions[sid] = {
+      history: [],
+      transcript: [{ role: 'ai', content: DEFAULT_WELCOME_MD, isHTML: false }]
+    };
+  }
+  return chatSessions[sid];
+}
+
+function appendZiaMsgToDom(role, content, isHTML = false) {
+  const msgs = document.getElementById('ziaMessages');
+  const div  = document.createElement('div');
+  div.className = `zia-msg d-flex gap-2 ${role==='user' ? 'zia-msg-user flex-row-reverse' : 'zia-msg-ai'}`;
+
+  let bubble;
+  if (isHTML) {
+    bubble = content;
+  } else if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+    bubble = DOMPurify.sanitize(marked.parse(content), { USE_PROFILES:{ html:true } });
+  } else {
+    bubble = escapeHtml(content).replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
+  }
+
+  if (role === 'ai') {
+    div.innerHTML = `<div class="zia-bot-avatar flex-shrink-0"><i class="fa-solid fa-robot"></i></div>
+      <div class="zia-bubble">${bubble}</div>`;
+  } else {
+    div.innerHTML = `<div class="zia-bubble">${bubble}</div>`;
+  }
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function appendZiaMsg(role, content, isHTML = false, targetChatKey = null) {
+  const key = targetChatKey || currentChatKey();
+  const session = getOrCreateChatSession(key);
+  session.transcript.push({ role, content, isHTML: !!isHTML });
+  if (key === currentChatKey()) appendZiaMsgToDom(role, content, isHTML);
+}
+
+function renderChatSession(chatKey = null) {
+  const key = chatKey || currentChatKey();
+  const session = getOrCreateChatSession(key);
+  const msgs = document.getElementById('ziaMessages');
+  msgs.innerHTML = '';
+  session.transcript.forEach(entry => {
+    appendZiaMsgToDom(entry.role, entry.content, !!entry.isHTML);
+  });
+}
+
 /* ═══════════════════════════════════════════════════════════════
    SEND MESSAGE
 ════════════════════════════════════════════════════════════════ */
@@ -373,8 +617,10 @@ async function sendZiaMessage() {
   const input = document.getElementById('ziaInput');
   const msg   = input.value.trim();
   if (!msg) return;
+  const chatKey = currentChatKey();
+  const session = getOrCreateChatSession(chatKey);
   input.value = '';
-  appendZiaMsg('user', msg);
+  appendZiaMsg('user', msg, false, chatKey);
   document.getElementById('ziaSendBtn').disabled = true;
 
   // Detect add-to-dashboard intent
@@ -398,24 +644,24 @@ async function sendZiaMessage() {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg, history: conversationHistory })
+      body: JSON.stringify({ message: msg, history: session.history })
     });
     const data = await resp.json();
     hideZiaTyping();
 
     if (data.success) {
-      conversationHistory.push({ role: 'user',      content: msg        });
-      conversationHistory.push({ role: 'assistant', content: data.message });
-      if (conversationHistory.length > 20)
-        conversationHistory = conversationHistory.slice(-20);
-      handleAgentResponse(data, msg);
+      session.history.push({ role: 'user',      content: msg          });
+      session.history.push({ role: 'assistant', content: data.message });
+      if (session.history.length > 20)
+        session.history = session.history.slice(-20);
+      handleAgentResponse(data, msg, chatKey);
     } else {
-      appendZiaMsg('ai', '⚠️ ' + (data.error || data.message || 'Something went wrong.'));
+      appendZiaMsg('ai', '⚠️ ' + (data.error || data.message || 'Something went wrong.'), false, chatKey);
       pendingDashboardUpdate = null; pendingUpdateMode = null;
     }
   } catch (err) {
     hideZiaTyping();
-    appendZiaMsg('ai', '⚠️ Connection error. Please try again.');
+    appendZiaMsg('ai', '⚠️ Connection error. Please try again.', false, chatKey);
     pendingDashboardUpdate = null; pendingUpdateMode = null;
   }
   document.getElementById('ziaSendBtn').disabled = false;
@@ -424,11 +670,18 @@ async function sendZiaMessage() {
 /* ═══════════════════════════════════════════════════════════════
    HANDLE AGENT RESPONSE
 ════════════════════════════════════════════════════════════════ */
-function handleAgentResponse(data, userPrompt) {
+function handleAgentResponse(data, userPrompt, sourceChatKey) {
   // Dashboard JSON comes either in data.dashboard or embedded in data.message
   const dashSpec = data.dashboard || extractVisualization(data.message);
 
   const prose = cleanJSON(data.message);     // strip embedded JSON
+  const promptLower = (userPrompt || '').toLowerCase();
+  const asksFreshDashboard = /\b(new|create|build|generate)\b.*\bdashboard\b/.test(promptLower);
+  const canImplicitAppend = (
+    !!activeDashboardId &&
+    !pendingDashboardUpdate &&
+    !asksFreshDashboard
+  );
 
   if (dashSpec && (dashSpec.dashboard === true || dashSpec.components?.length)) {
     const components = (dashSpec.components || []).map(c => ({
@@ -436,20 +689,65 @@ function handleAgentResponse(data, userPrompt) {
       chart_type: normalizeChartType(c.chart_type)
     }));
 
+    // If user is in an existing dashboard and AI returned a single widget-like
+    // result, treat it as an additive follow-up unless user asked for a new dashboard.
+    if (
+      canImplicitAppend &&
+      components.length === 1 &&
+      dashboards[activeDashboardId]
+    ) {
+      pendingDashboardUpdate = activeDashboardId;
+      pendingUpdateMode = 'add';
+    }
+
     // ── Modify / Add to existing tab ──────────────────────────────────────
     if (pendingDashboardUpdate && dashboards[pendingDashboardUpdate]) {
       const tid  = pendingDashboardUpdate;
       const dash = dashboards[tid];
 
       if (pendingUpdateMode === 'add') {
-        const existing = new Set(dash.components.map(c => c.title));
-        const newComps  = components.filter(c => !existing.has(c.title));
-        dash.components = [...dash.components, ...newComps];
-        appendZiaMsg('ai',
-          `Added **${newComps.length}** component${newComps.length!==1?'s':''} to **${dash.title}**.`);
+        const existingTitles = new Set(
+          (dash.components || []).map(c => (c?.title || '').trim()).filter(Boolean)
+        );
+
+        const toAppend = components.map((comp) => {
+          const cloned = { ...comp };
+          assignComponentId(cloned);
+          const baseTitle = (cloned.title || cloned.label || 'Chart').trim();
+
+          if (!baseTitle) {
+            cloned.title = 'Chart';
+            return cloned;
+          }
+
+          if (!existingTitles.has(baseTitle)) {
+            cloned.title = baseTitle;
+            existingTitles.add(baseTitle);
+            return cloned;
+          }
+
+          // Keep one-by-one additions even for similar charts by suffixing title.
+          let n = 2;
+          let candidate = `${baseTitle} (${n})`;
+          while (existingTitles.has(candidate)) {
+            n += 1;
+            candidate = `${baseTitle} (${n})`;
+          }
+          cloned.title = candidate;
+          existingTitles.add(candidate);
+          return cloned;
+        });
+
+        dash.components = [...dash.components, ...toAppend];
+        appendZiaMsg(
+          'ai',
+          `Added **${toAppend.length}** component${toAppend.length!==1?'s':''} to **${dash.title}**.`,
+          false,
+          sourceChatKey
+        );
       } else {
         dash.components = components;
-        appendZiaMsg('ai', `**${dash.title}** updated.`);
+        appendZiaMsg('ai', `**${dash.title}** updated.`, false, sourceChatKey);
       }
 
       pendingDashboardUpdate = null; pendingUpdateMode = null;
@@ -460,10 +758,20 @@ function handleAgentResponse(data, userPrompt) {
 
     // ── New tab ───────────────────────────────────────────────────────────
     const id    = 'dash_' + (++dashboardCounter) + '_' + Date.now();
-    const title = dashSpec.title || ('Dashboard ' + dashboardCounter);
+    const title = 'Dashboard ' + dashboardCounter;
+    if (!chatSessions[id]) {
+      const src = getOrCreateChatSession(sourceChatKey);
+      chatSessions[id] = {
+        history: [...src.history],
+        transcript: src.transcript.map(t => ({ ...t })),
+      };
+    }
     dashboards[id] = {
-      title, components: JSON.parse(JSON.stringify(components)),
-      gridInstance: null
+      title, components: JSON.parse(JSON.stringify(components)).map(assignComponentId),
+      gridInstance: null,
+      kpiGridInstance: null,
+      chartLayout: {},
+      kpiLayout: {},
     };
     activeDashboardId     = id;
     pendingDashboardUpdate = null; pendingUpdateMode = null;
@@ -472,8 +780,8 @@ function handleAgentResponse(data, userPrompt) {
     const kpiN   = components.filter(c => ['kpi','numeric','gauge','dial','bullet'].includes(c.chart_type)).length;
     const chartN = components.length - kpiN;
 
-    if (prose) appendZiaMsg('ai', prose);
-    appendZiaDashboardCard(title, kpiN, chartN, id);
+    if (prose) appendZiaMsg('ai', prose, false, id);
+    appendZiaDashboardCard(title, kpiN, chartN, id, id);
 
   } else if (dashSpec && dashSpec.chart_type) {
     // ── Single widget ─────────────────────────────────────────────────────
@@ -481,28 +789,40 @@ function handleAgentResponse(data, userPrompt) {
     if (pendingDashboardUpdate && dashboards[pendingDashboardUpdate]) {
       const tid  = pendingDashboardUpdate;
       dashboards[tid].components.push(dashSpec);
-      appendZiaMsg('ai', `Added **${dashSpec.title || 'chart'}** to the dashboard.`);
+      appendZiaMsg('ai', `Added **${dashSpec.title || 'chart'}** to the dashboard.`, false, sourceChatKey);
       pendingDashboardUpdate = null; pendingUpdateMode = null;
       activeDashboardId = tid;
       renderDashboardCanvas(tid);
+      renderChatSession(tid);
       return;
     }
     const id = 'dash_' + (++dashboardCounter) + '_' + Date.now();
+    if (!chatSessions[id]) {
+      const src = getOrCreateChatSession(sourceChatKey);
+      chatSessions[id] = {
+        history: [...src.history],
+        transcript: src.transcript.map(t => ({ ...t })),
+      };
+    }
+    const title = 'Dashboard ' + dashboardCounter;
     dashboards[id] = {
-      title: dashSpec.title || 'Chart',
-      components: [JSON.parse(JSON.stringify(dashSpec))],
-      gridInstance: null
+      title,
+      components: [assignComponentId(JSON.parse(JSON.stringify(dashSpec)))],
+      gridInstance: null,
+      kpiGridInstance: null,
+      chartLayout: {},
+      kpiLayout: {},
     };
     activeDashboardId     = id;
     pendingDashboardUpdate = null; pendingUpdateMode = null;
     renderDashboardCanvas(id);
-    if (prose) appendZiaMsg('ai', prose);
-    appendZiaDashboardCard(dashSpec.title || 'Chart', 0, 1, id);
+    if (prose) appendZiaMsg('ai', prose, false, id);
+    appendZiaDashboardCard(title, 0, 1, id, id);
 
   } else {
     // ── Text-only answer ──────────────────────────────────────────────────
     pendingDashboardUpdate = null; pendingUpdateMode = null;
-    appendZiaMsg('ai', prose || data.message || 'No data returned.');
+    appendZiaMsg('ai', prose || data.message || 'No data returned.', false, sourceChatKey);
   }
 }
 
@@ -512,8 +832,8 @@ function handleAgentResponse(data, userPrompt) {
 function renderDashboardCanvas(id) {
   const dash = dashboards[id];
   document.getElementById('emptyState').classList.add('hidden');
-  document.getElementById('refreshBtn').classList.remove('hidden');
-  document.getElementById('exportBtn').classList.remove('hidden');
+  activeDashboardId = id;
+  updateDashboardActionButtons();
 
   // Tabs
   const tabsEl = document.getElementById('dashboardTabs');
@@ -539,6 +859,7 @@ function renderDashboardCanvas(id) {
     `<span class="text-primary">Analytics</span> &mdash; ${escapeHtml(dash.title)}`;
 
   buildGrid(id);
+  applyDashboardMode();
 }
 
 function switchTab(id) {
@@ -550,11 +871,15 @@ function switchTab(id) {
   document.getElementById('topbarTitle').innerHTML =
     `<span class="text-primary">Analytics</span> &mdash; ${escapeHtml(dashboards[id].title)}`;
   buildGrid(id);
+  renderChatSession(id);
+  updateDashboardActionButtons();
+  applyDashboardMode();
 }
 
 function closeTab(event, id) {
   event.stopPropagation();
   delete dashboards[id];
+  delete chatSessions[id];
   if (pendingDashboardUpdate === id) { pendingDashboardUpdate = null; pendingUpdateMode = null; }
   document.querySelector(`[data-tab-id="${id}"]`)?.remove();
 
@@ -568,8 +893,9 @@ function closeTab(event, id) {
     document.getElementById('dashboardTabs').classList.add('hidden');
     document.getElementById('topbarTitle').innerHTML =
       '<span class="text-primary">Analytics</span> Dashboard';
-    document.getElementById('refreshBtn').classList.add('hidden');
-    document.getElementById('exportBtn').classList.add('hidden');
+    renderChatSession(GLOBAL_CHAT_KEY);
+    updateDashboardActionButtons();
+    applyDashboardMode();
   }
 }
 
@@ -625,12 +951,16 @@ function normalizeChartType(rawType) {
 function buildGrid(dashId) {
   const dash  = dashboards[dashId];
   const mount = document.getElementById('dashboardMount');
+
+  // Preserve current positions before rebuilding DOM.
+  captureDashboardLayout(dashId);
   mount.innerHTML = '';
 
-  dash.components = (dash.components || []).map(c => ({
-    ...c,
-    chart_type: normalizeChartType(c.chart_type)
-  }));
+  dash.components = (dash.components || []);
+  ensureComponentIds(dash);
+  dash.components.forEach(c => {
+    c.chart_type = normalizeChartType(c.chart_type);
+  });
 
   if (!dash.components || dash.components.length === 0) {
     mount.innerHTML = `<div class="text-center py-5 text-muted">
@@ -645,49 +975,97 @@ function buildGrid(dashId) {
   const kpis     = dash.components.filter(c =>  kpiTypes.has(c.chart_type));
   const charts   = dash.components.filter(c => !kpiTypes.has(c.chart_type));
 
-  /* ═══ SECTION 1 — KEY METRICS (Bootstrap responsive row) ═══════ */
+  /* ═══ SECTION 1 — KEY METRICS (GridStack drag-resize) ═══════ */
   if (kpis.length > 0) {
     const kpiHeader = document.createElement('div');
     kpiHeader.className = 'section-divider';
     kpiHeader.innerHTML = '<i class="fa-solid fa-gauge-high text-primary me-1"></i>Key Metrics';
     mount.appendChild(kpiHeader);
 
-    // Responsive column: 1-2 → col-6, 3-4 → col-3 (4 per row), 5-6 → col-4, 7+ → col-3
-    const colCls = kpis.length <= 2 ? 'col-12 col-sm-6'
-                 : kpis.length <= 4 ? 'col-12 col-sm-6 col-xl-3'
-                 : kpis.length <= 6 ? 'col-12 col-sm-4'
-                 : 'col-12 col-sm-3';
+    const kpiGridEl = document.createElement('div');
+    kpiGridEl.className = 'grid-stack mb-3';
+    kpiGridEl.id = 'kpi_gs_' + dashId;
+    mount.appendChild(kpiGridEl);
 
-    const kpiRow = document.createElement('div');
-    kpiRow.className = 'row g-3 mb-3';
-    kpiRow.id = 'kpi_row_' + dashId;
-    mount.appendChild(kpiRow);
+    if (dash.kpiGridInstance) { try { dash.kpiGridInstance.destroy(false); } catch (_) {} }
+
+    const kpiGrid = GridStack.init({
+      column: 12,
+      cellHeight: 80,
+      animate: true,
+      resizable: { handles: 'all' },
+      draggable: { handle: '.gs-drag-handle' },
+      margin: 12,
+    }, '#kpi_gs_' + dashId);
+    dash.kpiGridInstance = kpiGrid;
 
     kpis.forEach((comp, i) => {
       const wid       = 'w_' + Math.random().toString(36).slice(2, 10);
       const colorCls  = KPI_COLORS[i % KPI_COLORS.length];
+      const ct        = normalizeChartType(comp.chart_type);
+      const saved     = dash.kpiLayout?.[comp._componentId];
+      const sz        = saved || _resolveWidgetSize(comp);
 
-      const colDiv = document.createElement('div');
-      colDiv.className = colCls;
-      colDiv.id = 'kpi_col_' + wid;
-      colDiv.innerHTML = `
-        <div class="kpi-row-card border-top border-3 ${colorCls}">
-          <div class="kpi-card-header d-flex align-items-center px-3 py-1 border-bottom">
-            <span class="text-secondary fw-medium flex-grow-1 text-truncate" style="font-size:11px;">
+      const el = document.createElement('div');
+      el.className = 'grid-stack-item';
+      el.setAttribute('gs-w', Math.max(3, Math.min(6, sz.w || 3)));
+      el.setAttribute('gs-h', Math.max(2, Math.min(4, sz.h || 2)));
+      if (saved) {
+        el.setAttribute('gs-x', saved.x);
+        el.setAttribute('gs-y', saved.y);
+      }
+      el.setAttribute('gs-min-w', 2);
+      el.setAttribute('gs-min-h', 2);
+
+      el.innerHTML = `
+        <div class="grid-stack-item-content kpi-row-card border-top border-3 ${colorCls}">
+          <div class="kpi-card-header d-flex align-items-start gap-1 px-2 py-1 border-bottom gs-drag-handle" style="cursor:grab;">
+            <i class="fa-solid fa-grip-dots-vertical text-muted me-1" style="font-size:10px;opacity:.5"></i>
+            <span class="text-secondary fw-medium flex-grow-1 widget-title" style="font-size:11px;">
               ${escapeHtml(comp.title || '')}
             </span>
+            <button type="button" class="btn btn-link btn-sm text-secondary p-0 me-1 rename-control"
+              title="Rename" style="font-size:11px;"
+              onclick="event.stopPropagation();renameComponent('${comp._componentId}')">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <div class="dropdown" onclick="event.stopPropagation()">
+              <button type="button" class="btn btn-link btn-sm text-secondary p-0 me-1"
+                data-bs-toggle="dropdown" title="Resize" style="font-size:11px;">
+                <i class="fa-solid fa-expand-arrows-alt"></i>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="min-width:160px;font-size:12px;">
+                <li><h6 class="dropdown-header py-1">Height</h6></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidget(this,2)">Compact (2)</button></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidget(this,3)">Standard (3)</button></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidget(this,4)">Tall (4)</button></li>
+                <li><hr class="dropdown-divider my-1"></li>
+                <li><h6 class="dropdown-header py-1">Width</h6></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidgetW(this,3)">Narrow (3)</button></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidgetW(this,4)">Standard (4)</button></li>
+                <li><button class="dropdown-item py-1" onclick="resizeWidgetW(this,6)">Wide (6)</button></li>
+              </ul>
+            </div>
             <button class="btn btn-link btn-sm text-danger p-0" title="Remove"
-              onclick="event.stopPropagation();document.getElementById('kpi_col_${wid}')?.remove()">
+              onclick="event.stopPropagation();removeWidget(this)">
               <i class="fa-solid fa-xmark fa-xs"></i>
             </button>
           </div>
           <div id="${wid}" class="flex-grow-1" style="min-height:80px;"></div>
         </div>`;
 
-      kpiRow.appendChild(colDiv);
+      kpiGrid.addWidget(el);
       widgetComponents[wid] = { comp, gsType: 'kpi' };
-      setTimeout(() => renderKPIWidget(wid, comp), 80);
+      setTimeout(() => renderKPIWidget(wid, { ...comp, chart_type: ct }), 120);
     });
+
+    kpiGrid.on('resizestop', (_ev, el) => {
+      const wid = el.querySelector('.widget-body')?.id || el.querySelector('[id^="w_"]')?.id;
+      const info = wid ? widgetComponents[wid] : null;
+      if (info?.gsType === 'kpi') setTimeout(() => renderKPIWidget(wid, info.comp), 60);
+      captureDashboardLayout(dashId);
+    });
+    kpiGrid.on('dragstop', () => captureDashboardLayout(dashId));
   }
 
   /* ═══ SECTION 2 — CHARTS & REPORTS (GridStack drag-resize) ════ */
@@ -716,10 +1094,15 @@ function buildGrid(dashId) {
       const wid = 'w_' + Math.random().toString(36).slice(2, 10);
       const el  = document.createElement('div');
       const ct  = normalizeChartType(comp.chart_type);
-      const sz  = _resolveWidgetSize(comp);
+      const saved = dash.chartLayout?.[comp._componentId];
+      const sz  = saved || _resolveWidgetSize(comp);
       el.className = 'grid-stack-item';
       el.setAttribute('gs-w', sz.w);
       el.setAttribute('gs-h', sz.h);
+      if (saved) {
+        el.setAttribute('gs-x', saved.x);
+        el.setAttribute('gs-y', saved.y);
+      }
       el.setAttribute('gs-min-h', (ct === 'table' || ct === 'pivot' || ct === 'report') ? 2 : 3);
       el.setAttribute('gs-min-w', (ct === 'table' || ct === 'pivot' || ct === 'report') ? 4 : 2);
 
@@ -728,9 +1111,14 @@ function buildGrid(dashId) {
           <div class="border-bottom px-2 py-1 d-flex align-items-center gap-1 flex-shrink-0 gs-drag-handle"
             style="cursor:grab;background:#fafafa;border-radius:10px 10px 0 0;">
             <i class="fa-solid fa-grip-dots-vertical text-muted me-1" style="font-size:10px;opacity:.5"></i>
-            <span class="text-secondary fw-medium flex-grow-1 text-truncate" style="font-size:12px;">
+            <span class="text-secondary fw-medium flex-grow-1 widget-title" style="font-size:12px;">
               ${escapeHtml(comp.title || '')}
             </span>
+            <button type="button" class="btn btn-link btn-sm text-secondary p-0 me-1 rename-control"
+              title="Rename" style="font-size:11px;"
+              onclick="event.stopPropagation();renameComponent('${comp._componentId}')">
+              <i class="fa-solid fa-pen"></i>
+            </button>
             <div class="dropdown" onclick="event.stopPropagation()">
               <button type="button" class="btn btn-link btn-sm text-secondary p-0 me-1"
                 data-bs-toggle="dropdown" title="Resize" style="font-size:11px;">
@@ -772,13 +1160,17 @@ function buildGrid(dashId) {
 
     grid.on('resizestop', (_ev, el) => {
       el.querySelectorAll('.js-plotly-plot').forEach(p => Plotly.relayout(p, { autosize: true }));
+      captureDashboardLayout(dashId);
     });
+    grid.on('dragstop', () => captureDashboardLayout(dashId));
 
   } else if (kpis.length === 0) {
     // No components at all (shouldn't happen, but guard)
     mount.innerHTML = `<div class="text-center py-4 text-muted small">
       No widgets to display.</div>`;
   }
+
+  if (dashId === activeDashboardId) applyDashboardMode();
 }
 
 function _defaultW(ct) {
@@ -826,7 +1218,30 @@ function _resolveWidgetSize(comp) {
 /* ═══════════════════════════════════════════════════════════════
    WIDGET ACTIONS
 ════════════════════════════════════════════════════════════════ */
-function removeWidget(btn) { btn.closest('.grid-stack-item')?.remove(); }
+function removeWidget(btn) {
+  const item = btn?.closest('.grid-stack-item');
+  if (!item || !activeDashboardId || !dashboards[activeDashboardId]) return;
+
+  const wid = item.querySelector('.widget-body')?.id || item.querySelector('[id^="w_"]')?.id;
+  const info = wid ? widgetComponents[wid] : null;
+  const comp = info?.comp || null;
+  const compId = comp?._componentId;
+  const dash = dashboards[activeDashboardId];
+
+  // Persist deletion in dashboard state so rebuilds never restore it.
+  if (compId) {
+    dash.components = (dash.components || []).filter(c => c?._componentId !== compId);
+    if (dash.chartLayout) delete dash.chartLayout[compId];
+    if (dash.kpiLayout) delete dash.kpiLayout[compId];
+  }
+
+  const grid = item.closest('.grid-stack')?.gridstack;
+  if (grid) grid.removeWidget(item);
+  else item.remove();
+
+  if (wid) delete widgetComponents[wid];
+  captureDashboardLayout(activeDashboardId);
+}
 
 function downloadWidget(wid, title) {
   const el = document.getElementById(wid);
@@ -849,41 +1264,74 @@ function downloadWidget(wid, title) {
   }
 }
 
-function refreshCurrentDashboard() {
-  if (activeDashboardId) buildGrid(activeDashboardId);
-}
-
 function newDashboard() {
   const id    = 'dash_' + (++dashboardCounter) + '_' + Date.now();
   const title = 'Dashboard ' + dashboardCounter;
-  dashboards[id] = { title, components: [], gridInstance: null };
+  dashboards[id] = { title, components: [], gridInstance: null, kpiGridInstance: null, chartLayout: {}, kpiLayout: {} };
+  chatSessions[id] = {
+    history: [],
+    transcript: [{ role: 'ai', content: DEFAULT_WELCOME_MD, isHTML: false }]
+  };
   activeDashboardId     = id;
+  isViewMode            = false;
   pendingDashboardUpdate = id;
   pendingUpdateMode      = 'add';
   renderDashboardCanvas(id);
+  renderChatSession(id);
+  updateDashboardActionButtons();
   if (!ziaOpen) toggleZia();
   setTimeout(() => appendZiaMsg('ai',
     `**${escapeHtml(title)}** created. Ask me to add widgets:\n\n` +
     `• *"Add leads by status pie chart"*\n` +
     `• *"Add a revenue KPI card"*\n` +
-    `• *"Add deals pipeline funnel"*`, false), 150);
+    `• *"Add deals pipeline funnel"*`, false, id), 150);
 }
 
-function exportDashboard() {
-  const mount = document.getElementById('dashboardMount');
-  if (!mount || !typeof html2canvas !== 'undefined') return;
-  html2canvas(mount, { backgroundColor:'#f0f2f5', scale: 1.5 }).then(canvas => {
-    const a = document.createElement('a');
+function exportDashboard(format = 'png') {
+  captureDashboardSnapshot().then(canvas => {
     const title = dashboards[activeDashboardId]?.title || 'dashboard';
-    a.download = title.replace(/[^\w]/g,'_') + '.png';
+    const safeTitle = title.replace(/[^\w]/g,'_');
+
+    if (format === 'pdf') {
+      if (!window.jspdf?.jsPDF) throw new Error('PDF export library is not loaded.');
+      const { jsPDF } = window.jspdf;
+      const orientation = canvas.width >= canvas.height ? 'landscape' : 'portrait';
+      const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+      const imageData = canvas.toDataURL('image/png');
+
+      pdf.addImage(imageData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imageData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`${safeTitle}.pdf`);
+      return;
+    }
+
+    const a = document.createElement('a');
+    a.download = `${safeTitle}.png`;
     a.href = canvas.toDataURL('image/png');
     a.click();
+  }).catch(err => {
+    console.error('Dashboard export failed:', err);
+    alert('Dashboard export failed. Please try again.');
   });
 }
 
 function resizeWidget(btn, h) {
   const item = btn.closest('.grid-stack-item');
-  const grid = dashboards[activeDashboardId]?.gridInstance;
+  const grid = item?.closest('.grid-stack')?.gridstack || dashboards[activeDashboardId]?.gridInstance;
   if (!grid || !item) return;
   grid.update(item, { h });
   setTimeout(() => {
@@ -898,7 +1346,7 @@ function resizeWidget(btn, h) {
 
 function resizeWidgetW(btn, w) {
   const item = btn.closest('.grid-stack-item');
-  const grid = dashboards[activeDashboardId]?.gridInstance;
+  const grid = item?.closest('.grid-stack')?.gridstack || dashboards[activeDashboardId]?.gridInstance;
   if (!grid || !item) return;
   grid.update(item, { w });
   setTimeout(() => {
@@ -1014,7 +1462,9 @@ function renderPlotlyChart(wid, comp) {
       paper_bgcolor:'transparent', plot_bgcolor:'transparent',
       height: plotH, autosize: true,
       legend: { orientation:'h', y:-0.28, font:{ size:11 } },
-      font:   { family:'Segoe UI, system-ui, sans-serif', size:11 }
+      font:   { family:'Segoe UI, system-ui, sans-serif', size:11 },
+      xaxis:  { automargin:true, tickangle:-30, tickfont:{ size:10 } },
+      yaxis:  { automargin:true, tickfont:{ size:10 } }
     };
     const cfg = {
       displayModeBar:true, responsive:true,
@@ -1427,39 +1877,12 @@ function cleanJSON(text) {
 /* ═══════════════════════════════════════════════════════════════
    CHAT HELPERS
 ════════════════════════════════════════════════════════════════ */
-function appendZiaMsg(role, content, isHTML = false) {
-  const msgs = document.getElementById('ziaMessages');
-  const div  = document.createElement('div');
-  div.className = `zia-msg d-flex gap-2 ${role==='user' ? 'zia-msg-user flex-row-reverse' : 'zia-msg-ai'}`;
-
-  let bubble;
-  if (isHTML) {
-    bubble = content;
-  } else if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
-    bubble = DOMPurify.sanitize(marked.parse(content), { USE_PROFILES:{ html:true } });
-  } else {
-    bubble = escapeHtml(content).replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
-  }
-
-  if (role === 'ai') {
-    div.innerHTML = `<div class="zia-bot-avatar flex-shrink-0"><i class="fa-solid fa-robot"></i></div>
-      <div class="zia-bubble">${bubble}</div>`;
-  } else {
-    div.innerHTML = `<div class="zia-bubble">${bubble}</div>`;
-  }
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-}
-
-function appendZiaDashboardCard(title, kpiCount, chartCount, dashId) {
-  const msgs = document.getElementById('ziaMessages');
+function appendZiaDashboardCard(title, kpiCount, chartCount, dashId, targetChatKey = null) {
   const desc = [];
   if (kpiCount  > 0) desc.push(kpiCount  + ' KPI' + (kpiCount   !== 1 ? 's' : ''));
   if (chartCount> 0) desc.push(chartCount + ' chart' + (chartCount !== 1 ? 's' : ''));
 
-  const div = document.createElement('div');
-  div.className = 'zia-msg d-flex gap-2 zia-msg-ai';
-  div.innerHTML = `
+  const cardHtml = `
     <div class="zia-bot-avatar flex-shrink-0"><i class="fa-solid fa-robot"></i></div>
     <div class="zia-bubble" style="max-width:100%;">
       <div class="small text-muted mb-1">Dashboard ready!</div>
@@ -1477,8 +1900,8 @@ function appendZiaDashboardCard(title, kpiCount, chartCount, dashId) {
         </div>
       </div>
     </div>`;
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
+
+  appendZiaMsg('ai', cardHtml, true, targetChatKey || currentChatKey());
 }
 
 let ziaTypingEl = null;
@@ -1546,6 +1969,11 @@ function escapeAttr(s) {
    BOOT
 ════════════════════════════════════════════════════════════════ */
 window.addEventListener('DOMContentLoaded', checkAuth);
+window.addEventListener('DOMContentLoaded', () => renderChatSession(GLOBAL_CHAT_KEY));
+window.addEventListener('DOMContentLoaded', () => {
+  updateDashboardActionButtons();
+  applyDashboardMode();
+});
 </script>
 </body>
 </html>
