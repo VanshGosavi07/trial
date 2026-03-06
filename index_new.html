@@ -26,6 +26,21 @@
   </script>
 
   <style>
+    :root {
+      --dashboard-bg: #f0f2f5;
+      --dashboard-surface: #ffffff;
+      --dashboard-header-bg: #fafafa;
+      --dashboard-text: #1a1f36;
+      --dashboard-muted: #6c757d;
+      --dashboard-accent: #0d6efd;
+      --dashboard-border: #dee2e6;
+      --dashboard-table-head: #0d6efd;
+      --dashboard-table-head-text: #ffffff;
+      --dashboard-table-even: #f8f9ff;
+      --dashboard-table-hover: #ddeeff;
+      --dashboard-shadow: 0 2px 10px rgba(0,0,0,.09);
+    }
+
     /* ── Sidebar ─────────────────────────────────────────────── */
     #sidebar { width:56px; transition:width .25s ease; flex-shrink:0; overflow:hidden; }
     #sidebar:hover { width:220px; }
@@ -66,35 +81,38 @@
     .zia-typing span:nth-child(3) { animation-delay:.4s; }
 
     /* ── GridStack widgets ───────────────────────────────────── */
-    .grid-stack-item-content { overflow:hidden;display:flex;flex-direction:column;height:100%;background:#fff;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.09); }
+    .grid-stack-item-content { overflow:hidden;display:flex;flex-direction:column;height:100%;background:var(--dashboard-surface);color:var(--dashboard-text);border-radius:10px;border:1px solid var(--dashboard-border);box-shadow:var(--dashboard-shadow); }
+    .grid-stack-item-content .border-bottom { border-color:var(--dashboard-border) !important; }
     /* widget-body: small top pad so chart never clips header, breathing room at bottom */
     .widget-body { flex:1;overflow:hidden;min-height:0;padding:4px 0 8px 0; }
 
     /* ── KPI cards ────────────────────────────────────────────── */
-    .kpi-row-card { background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;height:100%;min-height:115px;transition:box-shadow .2s;display:flex;flex-direction:column; }
+    .kpi-row-card { background:var(--dashboard-surface);color:var(--dashboard-text);border-radius:10px;border:1px solid var(--dashboard-border);box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;height:100%;min-height:115px;transition:box-shadow .2s;display:flex;flex-direction:column; }
     .kpi-row-card:hover { box-shadow:0 5px 20px rgba(0,0,0,.12); }
-    .kpi-card-header { background:#fafafa;flex-shrink:0; }
+    .kpi-card-header { background:var(--dashboard-header-bg);flex-shrink:0; }
     .kpi-row-card .kpi-widget { flex:1; }
-    .widget-title { white-space:normal; overflow-wrap:anywhere; word-break:break-word; line-height:1.2; }
+    .widget-title { white-space:normal; overflow-wrap:anywhere; word-break:break-word; line-height:1.2; color:var(--dashboard-text); }
 
     /* ── Section divider (label only, no horizontal line) ──────── */
-    .section-divider { display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.06em;padding:14px 0 6px 0;margin:0; }
+    .section-divider { display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:var(--dashboard-muted);text-transform:uppercase;letter-spacing:.06em;padding:14px 0 6px 0;margin:0; }
 
     /* ── KPI card ────────────────────────────────────────────── */
     .kpi-widget { display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:12px;gap:4px; }
     .kpi-icon   { font-size:28px;line-height:1; }
-    .kpi-value  { font-size:30px;font-weight:800;color:#1a1f36;line-height:1; }
-    .kpi-subtitle { font-size:12px;color:#6c757d; }
+    .kpi-value  { font-size:30px;font-weight:800;color:var(--dashboard-text);line-height:1; }
+    .kpi-subtitle { font-size:12px;color:var(--dashboard-muted); }
     .kpi-trend { font-size:12px;font-weight:600; }
     .kpi-trend.up { color:#198754; }
     .kpi-trend.down { color:#dc3545; }
 
     /* ── Table in widget ─────────────────────────────────────── */
-    .widget-table { width:100%;border-collapse:collapse;font-size:12px; }
-    .widget-table thead { background:#0d6efd;color:#fff;position:sticky;top:0; }
-    .widget-table th,.widget-table td { padding:6px 10px;border:1px solid #dee2e6;text-align:left;white-space:normal;overflow-wrap:anywhere;word-break:break-word; }
-    .widget-table tbody tr:nth-child(even) { background:#f8f9ff; }
-    .widget-table tbody tr:hover { background:#ddeeff; }
+    .widget-table { width:100%;border-collapse:collapse;font-size:12px;background:var(--dashboard-surface); }
+    .widget-table thead { background:var(--dashboard-table-head);color:var(--dashboard-table-head-text);position:sticky;top:0; }
+    .widget-table thead th { background:var(--dashboard-table-head);color:var(--dashboard-table-head-text); }
+    .widget-table th,.widget-table td { padding:6px 10px;border:1px solid var(--dashboard-border);text-align:left;white-space:normal;overflow-wrap:anywhere;word-break:break-word; color:var(--dashboard-text); }
+    .widget-table tbody td { background:transparent; }
+    .widget-table tbody tr:nth-child(even) { background:var(--dashboard-table-even); }
+    .widget-table tbody tr:hover td,.widget-table tbody tr:hover { background:var(--dashboard-table-hover); }
 
     /* ── Dashboard card in chat ──────────────────────────────── */
     .zia-dash-card { background:linear-gradient(135deg,#eef6ff,#f5f9ff);border:1.5px solid #bee3f8;border-radius:8px;padding:10px 12px;cursor:pointer;transition:all .2s; }
@@ -117,11 +135,17 @@
 
     /* ── Utilities ───────────────────────────────────────────── */
     .hidden { display:none !important; }
-    body { background:#f0f2f5 !important; }
+    body { background:var(--dashboard-bg) !important; }
+    #canvasArea { background:var(--dashboard-bg); transition:background .2s ease; }
+    #dashboardMount { min-height:calc(100vh - 170px); transition:background .2s ease,color .2s ease; }
+    .theme-swatch { width:16px;height:16px;border-radius:50%;display:inline-block;border:1px solid rgba(0,0,0,.12); }
+    .theme-preset-btn { text-align:left; }
+    .theme-preset-btn small { color:#6c757d; display:block; }
 
     .view-mode .gs-drag-handle .dropdown,
+    .view-mode .gs-drag-handle .widget-theme-control,
     .view-mode .gs-drag-handle .rename-control,
-    .view-mode .gs-drag-handle .btn-danger,
+    .view-mode .gs-drag-handle .remove-control,
     .view-mode .ui-resizable-handle {
       display: none !important;
     }
@@ -182,6 +206,9 @@
     <div class="d-flex gap-2 ms-auto">
       <button class="btn btn-primary btn-sm" onclick="newDashboard()" title="Create a blank dashboard tab">
         <i class="fa-solid fa-plus me-1"></i>New Dashboard
+      </button>
+      <button class="btn btn-outline-primary btn-sm hidden" id="themeBtn" onclick="openThemeEditor()">
+        <i class="fa-solid fa-palette me-1"></i>Theme
       </button>
       <button class="btn btn-outline-dark btn-sm hidden" id="renameDashboardBtn" onclick="renameDashboard()">
         <i class="fa-solid fa-pen me-1"></i>Rename Dashboard
@@ -318,6 +345,148 @@
   </div>
 </div><!-- /ziaPanel -->
 
+<!-- ═══ THEME MODAL ═══════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="themeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fa-solid fa-palette text-primary me-2"></i>Dashboard Theme</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <div class="small text-uppercase text-muted fw-semibold mb-2">Presets</div>
+          <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm theme-preset-btn" onclick="applyThemePreset('classic')">
+              <span class="theme-swatch me-1" style="background:#0d6efd"></span>Classic
+              <small>Clean analytics default</small>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm theme-preset-btn" onclick="applyThemePreset('forest')">
+              <span class="theme-swatch me-1" style="background:#2f855a"></span>Forest
+              <small>Muted green workspace</small>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm theme-preset-btn" onclick="applyThemePreset('sunset')">
+              <span class="theme-swatch me-1" style="background:#dd6b20"></span>Sunset
+              <small>Warm orange report style</small>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm theme-preset-btn" onclick="applyThemePreset('midnight')">
+              <span class="theme-swatch me-1" style="background:#38bdf8"></span>Midnight
+              <small>Dark dashboard canvas</small>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm theme-preset-btn" onclick="applyThemePreset('blackgold')">
+              <span class="theme-swatch me-1" style="background:#d4a017"></span>Black Gold
+              <small>Luxury black and gold look</small>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm theme-preset-btn" onclick="applyThemePreset('ocean')">
+              <span class="theme-swatch me-1" style="background:#0f766e"></span>Ocean
+              <small>Cool teal and blue workspace</small>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm theme-preset-btn" onclick="applyThemePreset('rosewood')">
+              <span class="theme-swatch me-1" style="background:#be185d"></span>Rosewood
+              <small>Bold editorial magenta-red</small>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm theme-preset-btn" onclick="applyThemePreset('slate')">
+              <span class="theme-swatch me-1" style="background:#475569"></span>Slate
+              <small>Modern neutral product theme</small>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm theme-preset-btn" onclick="applyThemePreset('citrus')">
+              <span class="theme-swatch me-1" style="background:#65a30d"></span>Citrus
+              <small>Fresh lime and amber mix</small>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm theme-preset-btn" onclick="applyThemePreset('royal')">
+              <span class="theme-swatch me-1" style="background:#4338ca"></span>Royal
+              <small>Indigo luxury analytics board</small>
+            </button>
+          </div>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label small">Dashboard Background</label>
+            <input type="color" class="form-control form-control-color w-100" id="themeDashboardBg">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Widget Background</label>
+            <input type="color" class="form-control form-control-color w-100" id="themeSurface">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Widget Header</label>
+            <input type="color" class="form-control form-control-color w-100" id="themeHeaderBg">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Primary Accent</label>
+            <input type="color" class="form-control form-control-color w-100" id="themeAccent">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Main Text</label>
+            <input type="color" class="form-control form-control-color w-100" id="themeText">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Muted Text</label>
+            <input type="color" class="form-control form-control-color w-100" id="themeMuted">
+          </div>
+          <div class="col-12">
+            <label class="form-label small">Chart Palette</label>
+            <textarea class="form-control" id="themePalette" rows="3" placeholder="#3b82f6, #22c55e, #f97316"></textarea>
+            <div class="form-text">Use comma-separated hex colors. These colors apply to charts, graphs, and report highlights.</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" onclick="resetThemeEditor()">Reset Theme</button>
+        <button type="button" class="btn btn-primary" onclick="saveThemeEditor()">Apply Theme</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="widgetThemeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fa-solid fa-brush text-primary me-2"></i>Widget Theme</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-6">
+            <label class="form-label small">Widget Background</label>
+            <input type="color" class="form-control form-control-color w-100" id="widgetThemeSurface">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Header Background</label>
+            <input type="color" class="form-control form-control-color w-100" id="widgetThemeHeaderBg">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Accent Color</label>
+            <input type="color" class="form-control form-control-color w-100" id="widgetThemeAccent">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Text Color</label>
+            <input type="color" class="form-control form-control-color w-100" id="widgetThemeText">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Muted Text</label>
+            <input type="color" class="form-control form-control-color w-100" id="widgetThemeMuted">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Table Header</label>
+            <input type="color" class="form-control form-control-color w-100" id="widgetThemeTableHead">
+          </div>
+          <div class="col-12">
+            <label class="form-label small">Chart Palette</label>
+            <textarea class="form-control" id="widgetThemePalette" rows="3" placeholder="#3b82f6, #22c55e, #f97316"></textarea>
+            <div class="form-text">These colors apply only to the selected chart, graph, KPI, or table widget.</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" onclick="resetWidgetThemeEditor()">Use Dashboard Theme</button>
+        <button type="button" class="btn btn-primary" onclick="saveWidgetThemeEditor()">Apply Widget Theme</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <!-- GridStack -->
@@ -356,8 +525,286 @@ const PALETTE = [
   '#84cc16','#f43f5e','#0ea5e9','#d946ef','#fb923c',
   '#10b981','#6366f1','#64748b'
 ];
+const DEFAULT_THEME = {
+  dashboardBg: '#f0f2f5',
+  surface: '#ffffff',
+  headerBg: '#fafafa',
+  accent: '#0d6efd',
+  text: '#1a1f36',
+  muted: '#6c757d',
+  border: '#dee2e6',
+  tableHead: '#0d6efd',
+  tableHeadText: '#ffffff',
+  tableEven: '#f8f9ff',
+  tableHover: '#ddeeff',
+  palette: [...PALETTE]
+};
+const THEME_PRESETS = {
+  classic: { ...DEFAULT_THEME },
+  forest: {
+    dashboardBg: '#edf7f1', surface: '#ffffff', headerBg: '#f4fbf6', accent: '#2f855a',
+    text: '#18322a', muted: '#52796a', border: '#cfe5d8', tableHead: '#2f855a',
+    tableHeadText: '#ffffff', tableEven: '#f4fbf6', tableHover: '#dff3e7',
+    palette: ['#2f855a','#68d391','#2b6cb0','#dd6b20','#805ad5','#319795','#d69e2e','#e53e3e']
+  },
+  sunset: {
+    dashboardBg: '#fff6ef', surface: '#ffffff', headerBg: '#fff1e6', accent: '#dd6b20',
+    text: '#3d2412', muted: '#8b5e3c', border: '#f1d6be', tableHead: '#dd6b20',
+    tableHeadText: '#ffffff', tableEven: '#fff7f1', tableHover: '#ffe7d6',
+    palette: ['#dd6b20','#f6ad55','#c05621','#e53e3e','#d69e2e','#2b6cb0','#319795','#9f7aea']
+  },
+  midnight: {
+    dashboardBg: '#0f172a', surface: '#111827', headerBg: '#172033', accent: '#38bdf8',
+    text: '#e5eefc', muted: '#94a3b8', border: '#243244', tableHead: '#38bdf8',
+    tableHeadText: '#082f49', tableEven: '#132033', tableHover: '#1b2a42',
+    palette: ['#38bdf8','#34d399','#f59e0b','#f472b6','#a78bfa','#fb7185','#22c55e','#60a5fa']
+  },
+  blackgold: {
+    dashboardBg: '#0b0b0c', surface: '#141416', headerBg: '#1d1d20', accent: '#d4a017',
+    text: '#f7e7b6', muted: '#c4ab63', border: '#3f3415', tableHead: '#d4a017',
+    tableHeadText: '#1a1405', tableEven: '#191816', tableHover: '#2a2412',
+    palette: ['#d4a017','#f2c14e','#8c6a0a','#f8e16c','#9f7a16','#ffd166','#c68b00','#e9c46a']
+  },
+  ocean: {
+    dashboardBg: '#ecfeff', surface: '#ffffff', headerBg: '#effcff', accent: '#0f766e',
+    text: '#12343b', muted: '#4b6b72', border: '#c7ece8', tableHead: '#0f766e',
+    tableHeadText: '#ecfeff', tableEven: '#f1fbfb', tableHover: '#d9f3f2',
+    palette: ['#0f766e','#0891b2','#2563eb','#06b6d4','#14b8a6','#38bdf8','#22c55e','#6366f1']
+  },
+  rosewood: {
+    dashboardBg: '#fff1f5', surface: '#ffffff', headerBg: '#fff4f7', accent: '#be185d',
+    text: '#4a102b', muted: '#8b4c68', border: '#f3c8d7', tableHead: '#be185d',
+    tableHeadText: '#fff7fa', tableEven: '#fff6f8', tableHover: '#ffe0ea',
+    palette: ['#be185d','#e11d48','#fb7185','#f43f5e','#7c3aed','#ec4899','#f97316','#ef4444']
+  },
+  slate: {
+    dashboardBg: '#f8fafc', surface: '#ffffff', headerBg: '#f1f5f9', accent: '#475569',
+    text: '#0f172a', muted: '#64748b', border: '#d8e0ea', tableHead: '#475569',
+    tableHeadText: '#f8fafc', tableEven: '#f8fafc', tableHover: '#eaf0f6',
+    palette: ['#475569','#0f172a','#2563eb','#0ea5e9','#14b8a6','#64748b','#22c55e','#f59e0b']
+  },
+  citrus: {
+    dashboardBg: '#fbfee7', surface: '#ffffff', headerBg: '#f7fee7', accent: '#65a30d',
+    text: '#30440a', muted: '#6b7f2d', border: '#dfe9b8', tableHead: '#65a30d',
+    tableHeadText: '#f7fee7', tableEven: '#faffef', tableHover: '#eef7c9',
+    palette: ['#65a30d','#84cc16','#eab308','#f59e0b','#22c55e','#0ea5e9','#f97316','#a3e635']
+  },
+  royal: {
+    dashboardBg: '#eef2ff', surface: '#ffffff', headerBg: '#eef3ff', accent: '#4338ca',
+    text: '#1e1b4b', muted: '#6366a3', border: '#d9dcfb', tableHead: '#4338ca',
+    tableHeadText: '#eef2ff', tableEven: '#f5f6ff', tableHover: '#e3e7ff',
+    palette: ['#4338ca','#6366f1','#8b5cf6','#a855f7','#2563eb','#ec4899','#14b8a6','#f59e0b']
+  }
+};
 const KPI_COLORS = ['border-primary','border-success','border-warning',
                     'border-danger','border-info','border-secondary'];
+let themeModalInstance = null;
+let widgetThemeModalInstance = null;
+let widgetThemeTargetId = null;
+
+function cloneTheme(theme = DEFAULT_THEME) {
+  return {
+    ...DEFAULT_THEME,
+    ...theme,
+    palette: Array.isArray(theme.palette) && theme.palette.length ? [...theme.palette] : [...DEFAULT_THEME.palette]
+  };
+}
+
+function mergeTheme(baseTheme = DEFAULT_THEME, overrideTheme = {}) {
+  return {
+    ...baseTheme,
+    ...overrideTheme,
+    palette: Array.isArray(overrideTheme.palette) && overrideTheme.palette.length
+      ? [...overrideTheme.palette]
+      : [...(baseTheme.palette || DEFAULT_THEME.palette)]
+  };
+}
+
+function ensureDashboardTheme(dash) {
+  if (!dash) return cloneTheme();
+  dash.theme = mergeTheme(DEFAULT_THEME, dash.theme || {});
+  return dash.theme;
+}
+
+function getActiveTheme() {
+  return activeDashboardId && dashboards[activeDashboardId]
+    ? ensureDashboardTheme(dashboards[activeDashboardId])
+    : cloneTheme();
+}
+
+function getActivePalette() {
+  return getActiveTheme().palette || [...DEFAULT_THEME.palette];
+}
+
+function getComponentTheme(comp) {
+  return mergeTheme(getActiveTheme(), comp?.theme || {});
+}
+
+function getComponentPalette(comp) {
+  return getComponentTheme(comp).palette || getActivePalette();
+}
+
+function getComponentThemeVars(comp) {
+  const theme = getComponentTheme(comp);
+  return [
+    `--dashboard-surface:${theme.surface}`,
+    `--dashboard-header-bg:${theme.headerBg}`,
+    `--dashboard-text:${theme.text}`,
+    `--dashboard-muted:${theme.muted}`,
+    `--dashboard-accent:${theme.accent}`,
+    `--dashboard-border:${theme.border}`,
+    `--dashboard-table-head:${theme.tableHead}`,
+    `--dashboard-table-head-text:${theme.tableHeadText}`,
+    `--dashboard-table-even:${theme.tableEven}`,
+    `--dashboard-table-hover:${theme.tableHover}`
+  ].join(';');
+}
+
+function hexToRgba(hex, alpha) {
+  const safe = String(hex || '').replace('#', '');
+  const normalized = safe.length === 3 ? safe.split('').map(ch => ch + ch).join('') : safe;
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return `rgba(13,110,253,${alpha})`;
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function applyDashboardTheme() {
+  const theme = getActiveTheme();
+  const root = document.documentElement;
+  root.style.setProperty('--dashboard-bg', theme.dashboardBg);
+  root.style.setProperty('--dashboard-surface', theme.surface);
+  root.style.setProperty('--dashboard-header-bg', theme.headerBg);
+  root.style.setProperty('--dashboard-text', theme.text);
+  root.style.setProperty('--dashboard-muted', theme.muted);
+  root.style.setProperty('--dashboard-accent', theme.accent);
+  root.style.setProperty('--dashboard-border', theme.border);
+  root.style.setProperty('--dashboard-table-head', theme.tableHead);
+  root.style.setProperty('--dashboard-table-head-text', theme.tableHeadText);
+  root.style.setProperty('--dashboard-table-even', theme.tableEven);
+  root.style.setProperty('--dashboard-table-hover', theme.tableHover);
+}
+
+function populateThemeEditor(theme) {
+  const t = cloneTheme(theme);
+  document.getElementById('themeDashboardBg').value = t.dashboardBg;
+  document.getElementById('themeSurface').value = t.surface;
+  document.getElementById('themeHeaderBg').value = t.headerBg;
+  document.getElementById('themeAccent').value = t.accent;
+  document.getElementById('themeText').value = t.text;
+  document.getElementById('themeMuted').value = t.muted;
+  document.getElementById('themePalette').value = t.palette.join(', ');
+}
+
+function parseThemePalette(rawValue) {
+  const colors = String(rawValue || '')
+    .split(',')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .filter(color => /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color));
+  return colors.length ? colors : [...DEFAULT_THEME.palette];
+}
+
+function openThemeEditor() {
+  if (!activeDashboardId || !dashboards[activeDashboardId] || isViewMode) return;
+  populateThemeEditor(getActiveTheme());
+  const modalEl = document.getElementById('themeModal');
+  themeModalInstance = themeModalInstance || new bootstrap.Modal(modalEl);
+  themeModalInstance.show();
+}
+
+function applyThemePreset(name) {
+  const preset = THEME_PRESETS[name];
+  if (!preset) return;
+  populateThemeEditor(preset);
+}
+
+function resetThemeEditor() {
+  populateThemeEditor(DEFAULT_THEME);
+}
+
+function saveThemeEditor() {
+  if (!activeDashboardId || !dashboards[activeDashboardId]) return;
+  const dash = dashboards[activeDashboardId];
+  dash.theme = cloneTheme({
+    dashboardBg: document.getElementById('themeDashboardBg').value,
+    surface: document.getElementById('themeSurface').value,
+    headerBg: document.getElementById('themeHeaderBg').value,
+    accent: document.getElementById('themeAccent').value,
+    text: document.getElementById('themeText').value,
+    muted: document.getElementById('themeMuted').value,
+    border: hexToRgba(document.getElementById('themeText').value, 0.12).replace('rgba', 'rgba'),
+    tableHead: document.getElementById('themeAccent').value,
+    tableHeadText: '#ffffff',
+    tableEven: hexToRgba(document.getElementById('themeSurface').value, 0.18),
+    tableHover: hexToRgba(document.getElementById('themeAccent').value, 0.16),
+    palette: parseThemePalette(document.getElementById('themePalette').value)
+  });
+  applyDashboardTheme();
+  buildGrid(activeDashboardId);
+  if (themeModalInstance) themeModalInstance.hide();
+}
+
+function populateWidgetThemeEditor(theme) {
+  const t = mergeTheme(getActiveTheme(), theme || {});
+  document.getElementById('widgetThemeSurface').value = t.surface;
+  document.getElementById('widgetThemeHeaderBg').value = t.headerBg;
+  document.getElementById('widgetThemeAccent').value = t.accent;
+  document.getElementById('widgetThemeText').value = t.text;
+  document.getElementById('widgetThemeMuted').value = t.muted;
+  document.getElementById('widgetThemeTableHead').value = t.tableHead;
+  document.getElementById('widgetThemePalette').value = (t.palette || []).join(', ');
+}
+
+function openWidgetThemeEditor(componentId) {
+  if (!activeDashboardId || !dashboards[activeDashboardId] || isViewMode || !componentId) return;
+  const comp = (dashboards[activeDashboardId].components || []).find(item => item?._componentId === componentId);
+  if (!comp) return;
+
+  widgetThemeTargetId = componentId;
+  populateWidgetThemeEditor(comp.theme || {});
+  const modalEl = document.getElementById('widgetThemeModal');
+  widgetThemeModalInstance = widgetThemeModalInstance || new bootstrap.Modal(modalEl);
+  widgetThemeModalInstance.show();
+}
+
+function resetWidgetThemeEditor() {
+  if (!widgetThemeTargetId) return;
+  clearComponentTheme(widgetThemeTargetId);
+  if (widgetThemeModalInstance) widgetThemeModalInstance.hide();
+}
+
+function saveWidgetThemeEditor() {
+  if (!activeDashboardId || !dashboards[activeDashboardId] || !widgetThemeTargetId) return;
+  const comp = (dashboards[activeDashboardId].components || []).find(item => item?._componentId === widgetThemeTargetId);
+  if (!comp) return;
+
+  comp.theme = {
+    surface: document.getElementById('widgetThemeSurface').value,
+    headerBg: document.getElementById('widgetThemeHeaderBg').value,
+    accent: document.getElementById('widgetThemeAccent').value,
+    text: document.getElementById('widgetThemeText').value,
+    muted: document.getElementById('widgetThemeMuted').value,
+    border: hexToRgba(document.getElementById('widgetThemeText').value, 0.12),
+    tableHead: document.getElementById('widgetThemeTableHead').value,
+    tableHeadText: '#ffffff',
+    tableEven: hexToRgba(document.getElementById('widgetThemeSurface').value, 0.18),
+    tableHover: hexToRgba(document.getElementById('widgetThemeAccent').value, 0.16),
+    palette: parseThemePalette(document.getElementById('widgetThemePalette').value)
+  };
+
+  buildGrid(activeDashboardId);
+  if (widgetThemeModalInstance) widgetThemeModalInstance.hide();
+}
+
+function clearComponentTheme(componentId) {
+  if (!activeDashboardId || !dashboards[activeDashboardId] || !componentId) return;
+  const comp = (dashboards[activeDashboardId].components || []).find(item => item?._componentId === componentId);
+  if (!comp) return;
+  delete comp.theme;
+  buildGrid(activeDashboardId);
+}
 
 /* ═══════════════════════════════════════════════════════════════
    AUTH CHECK
@@ -450,6 +897,7 @@ function captureDashboardLayout(dashId) {
 function updateDashboardActionButtons() {
   const hasActiveDashboard = !!activeDashboardId && !!dashboards[activeDashboardId];
   document.getElementById('exportBtn').classList.toggle('hidden', !hasActiveDashboard);
+  document.getElementById('themeBtn').classList.toggle('hidden', !hasActiveDashboard || isViewMode);
   document.getElementById('renameDashboardBtn').classList.toggle('hidden', !hasActiveDashboard || isViewMode);
   document.getElementById('viewModeBtn').classList.toggle('hidden', !hasActiveDashboard || isViewMode);
   document.getElementById('editModeBtn').classList.toggle('hidden', !hasActiveDashboard || !isViewMode);
@@ -543,7 +991,7 @@ function captureDashboardSnapshot() {
   canvasArea.scrollTop = 0;
 
   return html2canvas(mount, {
-    backgroundColor:'#f0f2f5',
+    backgroundColor:getActiveTheme().dashboardBg,
     scale: 1.5,
     useCORS: true,
     windowWidth: Math.max(mount.scrollWidth, mount.offsetWidth),
@@ -772,6 +1220,7 @@ function handleAgentResponse(data, userPrompt, sourceChatKey) {
       kpiGridInstance: null,
       chartLayout: {},
       kpiLayout: {},
+      theme: cloneTheme(),
     };
     activeDashboardId     = id;
     pendingDashboardUpdate = null; pendingUpdateMode = null;
@@ -812,6 +1261,7 @@ function handleAgentResponse(data, userPrompt, sourceChatKey) {
       kpiGridInstance: null,
       chartLayout: {},
       kpiLayout: {},
+      theme: cloneTheme(),
     };
     activeDashboardId     = id;
     pendingDashboardUpdate = null; pendingUpdateMode = null;
@@ -831,6 +1281,7 @@ function handleAgentResponse(data, userPrompt, sourceChatKey) {
 ════════════════════════════════════════════════════════════════ */
 function renderDashboardCanvas(id) {
   const dash = dashboards[id];
+  ensureDashboardTheme(dash);
   document.getElementById('emptyState').classList.add('hidden');
   activeDashboardId = id;
   updateDashboardActionButtons();
@@ -859,12 +1310,14 @@ function renderDashboardCanvas(id) {
     `<span class="text-primary">Analytics</span> &mdash; ${escapeHtml(dash.title)}`;
 
   buildGrid(id);
+  applyDashboardTheme();
   applyDashboardMode();
 }
 
 function switchTab(id) {
   if (!dashboards[id]) return;
   activeDashboardId = id;
+  ensureDashboardTheme(dashboards[id]);
   document.getElementById('dashboardTabs').querySelectorAll('.nav-link')
     .forEach(t => t.classList.remove('active'));
   document.getElementById('tab_' + id)?.classList.add('active');
@@ -873,6 +1326,7 @@ function switchTab(id) {
   buildGrid(id);
   renderChatSession(id);
   updateDashboardActionButtons();
+  applyDashboardTheme();
   applyDashboardMode();
 }
 
@@ -895,6 +1349,7 @@ function closeTab(event, id) {
       '<span class="text-primary">Analytics</span> Dashboard';
     renderChatSession(GLOBAL_CHAT_KEY);
     updateDashboardActionButtons();
+    applyDashboardTheme();
     applyDashboardMode();
   }
 }
@@ -1001,10 +1456,11 @@ function buildGrid(dashId) {
 
     kpis.forEach((comp, i) => {
       const wid       = 'w_' + Math.random().toString(36).slice(2, 10);
-      const colorCls  = KPI_COLORS[i % KPI_COLORS.length];
       const ct        = normalizeChartType(comp.chart_type);
       const saved     = dash.kpiLayout?.[comp._componentId];
       const sz        = saved || _resolveWidgetSize(comp);
+      const widgetThemeStyle = getComponentThemeVars(comp);
+      const widgetAccent = getComponentTheme(comp).accent;
 
       const el = document.createElement('div');
       el.className = 'grid-stack-item';
@@ -1018,12 +1474,17 @@ function buildGrid(dashId) {
       el.setAttribute('gs-min-h', 2);
 
       el.innerHTML = `
-        <div class="grid-stack-item-content kpi-row-card border-top border-3 ${colorCls}">
+        <div class="grid-stack-item-content kpi-row-card border-top border-3" style="${widgetThemeStyle};border-top-color:${widgetAccent} !important;">
           <div class="kpi-card-header d-flex align-items-start gap-1 px-2 py-1 border-bottom gs-drag-handle" style="cursor:grab;">
             <i class="fa-solid fa-grip-dots-vertical text-muted me-1" style="font-size:10px;opacity:.5"></i>
             <span class="text-secondary fw-medium flex-grow-1 widget-title" style="font-size:11px;">
               ${escapeHtml(comp.title || '')}
             </span>
+            <button type="button" class="btn btn-link btn-sm text-secondary p-0 me-1 widget-theme-control"
+              title="Widget Theme" style="font-size:11px;"
+              onclick="event.stopPropagation();openWidgetThemeEditor('${comp._componentId}')">
+              <i class="fa-solid fa-palette"></i>
+            </button>
             <button type="button" class="btn btn-link btn-sm text-secondary p-0 me-1 rename-control"
               title="Rename" style="font-size:11px;"
               onclick="event.stopPropagation();renameComponent('${comp._componentId}')">
@@ -1046,7 +1507,7 @@ function buildGrid(dashId) {
                 <li><button class="dropdown-item py-1" onclick="resizeWidgetW(this,6)">Wide (6)</button></li>
               </ul>
             </div>
-            <button class="btn btn-link btn-sm text-danger p-0" title="Remove"
+            <button class="btn btn-link btn-sm text-danger p-0 remove-control" title="Remove"
               onclick="event.stopPropagation();removeWidget(this)">
               <i class="fa-solid fa-xmark fa-xs"></i>
             </button>
@@ -1096,6 +1557,7 @@ function buildGrid(dashId) {
       const ct  = normalizeChartType(comp.chart_type);
       const saved = dash.chartLayout?.[comp._componentId];
       const sz  = saved || _resolveWidgetSize(comp);
+      const widgetThemeStyle = getComponentThemeVars(comp);
       el.className = 'grid-stack-item';
       el.setAttribute('gs-w', sz.w);
       el.setAttribute('gs-h', sz.h);
@@ -1107,13 +1569,18 @@ function buildGrid(dashId) {
       el.setAttribute('gs-min-w', (ct === 'table' || ct === 'pivot' || ct === 'report') ? 4 : 2);
 
       el.innerHTML = `
-        <div class="grid-stack-item-content">
+        <div class="grid-stack-item-content" style="${widgetThemeStyle}">
           <div class="border-bottom px-2 py-1 d-flex align-items-center gap-1 flex-shrink-0 gs-drag-handle"
-            style="cursor:grab;background:#fafafa;border-radius:10px 10px 0 0;">
+            style="cursor:grab;background:var(--dashboard-header-bg);border-radius:10px 10px 0 0;">
             <i class="fa-solid fa-grip-dots-vertical text-muted me-1" style="font-size:10px;opacity:.5"></i>
             <span class="text-secondary fw-medium flex-grow-1 widget-title" style="font-size:12px;">
               ${escapeHtml(comp.title || '')}
             </span>
+            <button type="button" class="btn btn-link btn-sm text-secondary p-0 me-1 widget-theme-control"
+              title="Widget Theme" style="font-size:11px;"
+              onclick="event.stopPropagation();openWidgetThemeEditor('${comp._componentId}')">
+              <i class="fa-solid fa-palette"></i>
+            </button>
             <button type="button" class="btn btn-link btn-sm text-secondary p-0 me-1 rename-control"
               title="Rename" style="font-size:11px;"
               onclick="event.stopPropagation();renameComponent('${comp._componentId}')">
@@ -1143,7 +1610,7 @@ function buildGrid(dashId) {
               onclick="event.stopPropagation();downloadWidget('${wid}','${escapeAttr(comp.title||'chart')}')">
               <i class="fa-solid fa-download"></i>
             </button>
-            <button type="button" class="btn btn-link btn-sm text-danger p-0"
+            <button type="button" class="btn btn-link btn-sm text-danger p-0 remove-control"
               title="Remove" style="font-size:11px;"
               onclick="event.stopPropagation();removeWidget(this)">
               <i class="fa-solid fa-xmark"></i>
@@ -1267,7 +1734,7 @@ function downloadWidget(wid, title) {
 function newDashboard() {
   const id    = 'dash_' + (++dashboardCounter) + '_' + Date.now();
   const title = 'Dashboard ' + dashboardCounter;
-  dashboards[id] = { title, components: [], gridInstance: null, kpiGridInstance: null, chartLayout: {}, kpiLayout: {} };
+  dashboards[id] = { title, components: [], gridInstance: null, kpiGridInstance: null, chartLayout: {}, kpiLayout: {}, theme: cloneTheme() };
   chatSessions[id] = {
     history: [],
     transcript: [{ role: 'ai', content: DEFAULT_WELCOME_MD, isHTML: false }]
@@ -1362,6 +1829,9 @@ function renderKPIWidget(wid, comp) {
   if (!el) return;
   const d  = comp.data || {};
   const ct = comp.chart_type;
+  const theme = getComponentTheme(comp);
+  const accentSoft = hexToRgba(theme.accent, 0.12);
+  const accentSoftStrong = hexToRgba(theme.accent, 0.18);
 
   const stripMoneySymbols = (val) => String(val ?? '')
     .replace(/[\$€£¥₹₩₽₺₦₱₪₫฿₴₡]/g, '')
@@ -1378,11 +1848,11 @@ function renderKPIWidget(wid, comp) {
       number: { suffix: stripMoneySymbols(d.suffix || ''), font: { size: 26 } },
       gauge: {
         axis: { range: [d.min || 0, max] },
-        bar: { color:'#0d6efd' }, bgcolor:'#f0f6ff', bordercolor:'#dee2e6',
+        bar: { color:theme.accent }, bgcolor:accentSoft, bordercolor:theme.border,
         steps: [
-          { range: [0, max*0.33], color:'#fee2e2' },
-          { range: [max*0.33, max*0.66], color:'#fef9c3' },
-          { range: [max*0.66, max],      color:'#dcfce7' }
+          { range: [0, max*0.33], color:hexToRgba(theme.accent, 0.12) },
+          { range: [max*0.33, max*0.66], color:hexToRgba(theme.accent, 0.2) },
+          { range: [max*0.66, max],      color:hexToRgba(theme.accent, 0.28) }
         ]
       }
     }], { margin:{t:24,b:8,l:10,r:10},
@@ -1399,9 +1869,9 @@ function renderKPIWidget(wid, comp) {
       delta: { reference: parseFloat(d.target)||0 },
       gauge: {
         shape:'bullet', axis:{ range:[0, parseFloat(d.max)||100] },
-        threshold: { line:{color:'#ef4444',width:3}, thickness:.75,
+        threshold: { line:{color:theme.text,width:3}, thickness:.75,
                      value: parseFloat(d.target)||0 },
-        bgcolor:'#f0f9ff', bar:{ color:'#0d6efd' }
+        bgcolor:accentSoftStrong, bar:{ color:theme.accent }
       }
     }], { margin:{t:24,b:8,l:50,r:20},
           height: Math.max((el.offsetHeight||100)-32, 70),
@@ -1446,6 +1916,8 @@ function renderKPIWidget(wid, comp) {
 function renderPlotlyChart(wid, comp) {
   const el = document.getElementById(wid);
   if (!el) return;
+  const PALETTE = getComponentPalette(comp);
+  const theme = getComponentTheme(comp);
 
   // ── Inner render — called once the container has real dimensions ────
   function _doRender() {
@@ -1461,10 +1933,10 @@ function renderPlotlyChart(wid, comp) {
       margin: { t:12, b:44, l:44, r:12 },
       paper_bgcolor:'transparent', plot_bgcolor:'transparent',
       height: plotH, autosize: true,
-      legend: { orientation:'h', y:-0.28, font:{ size:11 } },
-      font:   { family:'Segoe UI, system-ui, sans-serif', size:11 },
-      xaxis:  { automargin:true, tickangle:-30, tickfont:{ size:10 } },
-      yaxis:  { automargin:true, tickfont:{ size:10 } }
+      legend: { orientation:'h', y:-0.28, font:{ size:11, color: theme.muted } },
+      font:   { family:'Segoe UI, system-ui, sans-serif', size:11, color: theme.text },
+      xaxis:  { automargin:true, tickangle:-30, tickfont:{ size:10, color: theme.muted }, gridcolor: hexToRgba(theme.text, 0.08), zerolinecolor: hexToRgba(theme.text, 0.12) },
+      yaxis:  { automargin:true, tickfont:{ size:10, color: theme.muted }, gridcolor: hexToRgba(theme.text, 0.08), zerolinecolor: hexToRgba(theme.text, 0.12) }
     };
     const cfg = {
       displayModeBar:true, responsive:true,
@@ -1512,7 +1984,7 @@ function renderPlotlyChart(wid, comp) {
         Plotly.newPlot(el, [{
           type:'scatter', mode:'lines+markers',
           x: d.labels||[], y: d.values||[],
-          fill:'tozeroy', fillcolor:'rgba(59,130,246,.13)',
+          fill:'tozeroy', fillcolor:hexToRgba(PALETTE[0], .13),
           line:{ color:PALETTE[0], width:2 },
           marker:{ size:5, color:PALETTE[0] }
         }], layout, cfg); break;
@@ -1594,7 +2066,7 @@ function renderPlotlyChart(wid, comp) {
         Plotly.newPlot(el, [{
           type:'scatterpolar', fill:'toself',
           r: d.values||[], theta: d.labels||[],
-          line:{ color:PALETTE[4] }, fillcolor:'rgba(168,85,247,.18)'
+          line:{ color:PALETTE[4] }, fillcolor:hexToRgba(PALETTE[4], .18)
         }], { ...layout, polar:{ radialaxis:{ visible:true } } }, cfg); break;
 
       case 'heatmap':
@@ -1700,7 +2172,7 @@ function renderPlotlyChart(wid, comp) {
               boxmean:'sd', jitter:0.3, pointpos:0, boxpoints:'outliers'
             }))
           : [{ type:'box', y:d.values||[], name:comp.title||'',
-               marker:{ color:'#0d6efd' }, boxmean:'sd', boxpoints:'outliers' }];
+            marker:{ color:PALETTE[0] }, boxmean:'sd', boxpoints:'outliers' }];
         Plotly.newPlot(el, boxTraces, layout, cfg); break;
       }
 
@@ -1715,7 +2187,7 @@ function renderPlotlyChart(wid, comp) {
               points:'outliers'
             }))
           : [{ type:'violin', y:d.values||[], name:comp.title||'',
-               marker:{ color:'#0d6efd' }, box:{ visible:true },
+            marker:{ color:PALETTE[0] }, box:{ visible:true },
                meanline:{ visible:true }, points:'outliers' }];
         Plotly.newPlot(el, vTraces, layout, cfg); break;
       }
@@ -1786,7 +2258,7 @@ function renderPlotlyChart(wid, comp) {
         Plotly.newPlot(el, [{
           type:'scatterpolar', fill:'toself',
           r:d.values||[], theta:d.labels||[],
-          line:{ color:PALETTE[4] }, fillcolor:'rgba(168,85,247,.18)'
+          line:{ color:PALETTE[4] }, fillcolor:hexToRgba(PALETTE[4], .18)
         }], { ...layout, polar:{ radialaxis:{ visible:true } } }, cfg); break;
 
       // ── Report (alias for table) ───────────────────────────────────────
@@ -1795,9 +2267,9 @@ function renderPlotlyChart(wid, comp) {
         const cols = d.columns || (d.rows?.length ? Object.keys(d.rows[0]) : []);
         const rows = d.rows || [];
         // Explicit height so table scroll area fills the widget-body exactly
-        el.innerHTML = `<div style="overflow:auto;height:${containerH}px;padding:8px 10px;">
-          <table class="table table-sm table-hover table-bordered widget-table mb-0">
-            <thead class="table-primary">
+        el.innerHTML = `<div style="overflow:auto;height:${containerH}px;padding:8px 10px;background:var(--dashboard-surface);">
+          <table class="widget-table mb-0">
+            <thead>
               <tr>${cols.map(c=>`<th class="text-nowrap">${escapeHtml(String(c))}</th>`).join('')}</tr>
             </thead>
             <tbody>
@@ -1971,6 +2443,7 @@ function escapeAttr(s) {
 window.addEventListener('DOMContentLoaded', checkAuth);
 window.addEventListener('DOMContentLoaded', () => renderChatSession(GLOBAL_CHAT_KEY));
 window.addEventListener('DOMContentLoaded', () => {
+  applyDashboardTheme();
   updateDashboardActionButtons();
   applyDashboardMode();
 });
