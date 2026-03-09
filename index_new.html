@@ -983,23 +983,294 @@ function captureDashboardSnapshot() {
     return Promise.reject(new Error('Dashboard export is not available.'));
   }
 
-  const canvasArea = document.getElementById('canvasArea');
-  const previousOverflow = canvasArea.style.overflowY;
-  const previousScrollTop = canvasArea.scrollTop;
+  const exportStage = buildDashboardExportStage(mount);
+  document.body.appendChild(exportStage);
+  const exportRoot = exportStage.firstElementChild;
 
-  canvasArea.style.overflowY = 'visible';
-  canvasArea.scrollTop = 0;
-
-  return html2canvas(mount, {
-    backgroundColor:getActiveTheme().dashboardBg,
+  return html2canvas(exportRoot, {
+    backgroundColor: getActiveTheme().dashboardBg,
     scale: 1.5,
     useCORS: true,
-    windowWidth: Math.max(mount.scrollWidth, mount.offsetWidth),
-    windowHeight: Math.max(mount.scrollHeight, mount.offsetHeight)
-  }).finally(() => {
-    canvasArea.style.overflowY = previousOverflow;
-    canvasArea.scrollTop = previousScrollTop;
+    windowWidth: Math.max(exportRoot.scrollWidth, exportRoot.offsetWidth),
+    windowHeight: Math.max(exportRoot.scrollHeight, exportRoot.offsetHeight)
+  }).finally(() => exportStage.remove());
+}
+
+function buildDashboardExportStage(sourceMount) {
+  const stage = document.createElement('div');
+  const sourceWidth = Math.max(
+    Math.ceil(sourceMount.getBoundingClientRect().width || 0),
+    sourceMount.clientWidth || 0,
+    960
+  );
+
+  stage.style.position = 'absolute';
+  stage.style.left = '-100000px';
+  stage.style.top = '0';
+  stage.style.width = `${sourceWidth}px`;
+  stage.style.padding = '24px';
+  stage.style.background = getActiveTheme().dashboardBg;
+  stage.style.zIndex = '-1';
+
+  const clone = sourceMount.cloneNode(true);
+  clone.style.width = '100%';
+  clone.style.minHeight = 'auto';
+  clone.style.height = 'auto';
+  clone.style.overflow = 'visible';
+
+  prepareDashboardCloneForExport(clone);
+  stage.appendChild(clone);
+  return stage;
+}
+
+function prepareDashboardCloneForExport(cloneRoot) {
+  cloneRoot.querySelectorAll('.dropdown, .rename-control, .remove-control, .widget-theme-control, .ui-resizable-handle').forEach(el => el.remove());
+  cloneRoot.querySelectorAll('.gs-drag-handle').forEach(handle => {
+    handle.style.cursor = 'default';
   });
+
+  const reportScrollers = Array.from(cloneRoot.querySelectorAll('.widget-report-scroller'));
+  if (!reportScrollers.length) return;
+
+  const exportSection = document.createElement('div');
+  exportSection.className = 'export-report-section';
+  exportSection.style.marginTop = '24px';
+  exportSection.innerHTML = `
+    <div class="section-divider" style="padding-top:0;">
+      <i class="fa-solid fa-table-list text-primary me-1"></i>Expanded Reports
+    </div>`;
+
+  reportScrollers.forEach((scroller, index) => {
+    const sourceItem = scroller.closest('.grid-stack-item');
+    if (!sourceItem) return;
+
+    const exportCard = sourceItem.cloneNode(true);
+    exportCard.className = 'export-report-card';
+    exportCard.style.position = 'relative';
+    exportCard.style.left = 'auto';
+    exportCard.style.top = 'auto';
+    exportCard.style.inset = 'auto';
+    exportCard.style.transform = 'none';
+    exportCard.style.width = '100%';
+    exportCard.style.height = 'auto';
+    exportCard.style.marginBottom = '18px';
+
+    const content = exportCard.querySelector('.grid-stack-item-content');
+    if (content) {
+      content.style.height = 'auto';
+      content.style.minHeight = '0';
+    }
+
+    exportCard.querySelectorAll('.dropdown, .rename-control, .remove-control, .widget-theme-control, .ui-resizable-handle, [title="Download PNG"]').forEach(el => el.remove());
+
+    const widgetBody = exportCard.querySelector('.widget-body');
+    if (widgetBody) {
+      widgetBody.style.height = 'auto';
+      widgetBody.style.minHeight = '0';
+      widgetBody.style.overflow = 'visible';
+      widgetBody.style.paddingBottom = '0';
+    }
+
+    const exportScroller = exportCard.querySelector('.widget-report-scroller');
+    if (!exportScroller) return;
+
+    exportScroller.style.height = 'auto';
+    exportScroller.style.maxHeight = 'none';
+    exportScroller.style.overflow = 'visible';
+    exportScroller.style.padding = '10px 12px 12px';
+
+    const table = exportScroller.querySelector('table.widget-table');
+    if (!table) return;
+
+    exportScroller.innerHTML = '';
+    exportScroller.appendChild(buildExportFriendlyReportTable(table, index));
+    exportSection.appendChild(exportCard);
+  });
+
+  cloneRoot.appendChild(exportSection);
+}
+
+function buildExportFriendlyReportTable(table, tableIndex = 0) {
+  const columns = Array.from(table.querySelectorAll('thead th')).map(th => th.innerHTML);
+  const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr =>
+    Array.from(tr.children).map(td => td.innerHTML)
+  );
+
+  const totalCols = columns.length;
+  const chunkSize = totalCols > 14 ? 4 : totalCols > 10 ? 5 : totalCols > 7 ? 6 : totalCols;
+  const wrapper = document.createElement('div');
+  wrapper.style.display = 'flex';
+  wrapper.style.flexDirection = 'column';
+  wrapper.style.gap = '12px';
+
+  for (let start = 0; start < totalCols; start += chunkSize) {
+    const end = Math.min(totalCols, start + chunkSize);
+    const section = document.createElement('div');
+
+    if (chunkSize < totalCols) {
+      const caption = document.createElement('div');
+      caption.className = 'small';
+      caption.style.color = 'var(--dashboard-muted)';
+      caption.style.fontWeight = '600';
+      caption.style.marginBottom = '6px';
+      caption.textContent = `Columns ${start + 1}-${end} of ${totalCols}`;
+      section.appendChild(caption);
+    }
+
+    const chunkTable = document.createElement('table');
+    chunkTable.className = 'widget-table mb-0';
+    chunkTable.style.width = '100%';
+    chunkTable.style.tableLayout = 'fixed';
+    chunkTable.style.fontSize = '11px';
+
+    const thead = document.createElement('thead');
+    thead.style.position = 'static';
+    const headRow = document.createElement('tr');
+    columns.slice(start, end).forEach(colHtml => {
+      const th = document.createElement('th');
+      th.innerHTML = colHtml;
+      th.style.whiteSpace = 'normal';
+      th.style.overflowWrap = 'anywhere';
+      th.style.wordBreak = 'break-word';
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+
+    const tbody = document.createElement('tbody');
+    rows.forEach((rowCells, rowIndex) => {
+      const tr = document.createElement('tr');
+      if (rowIndex % 2 === 1) tr.style.background = 'var(--dashboard-table-even)';
+      rowCells.slice(start, end).forEach(cellHtml => {
+        const td = document.createElement('td');
+        td.innerHTML = cellHtml;
+        td.style.whiteSpace = 'normal';
+        td.style.overflowWrap = 'anywhere';
+        td.style.wordBreak = 'break-word';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+
+    chunkTable.appendChild(thead);
+    chunkTable.appendChild(tbody);
+    section.appendChild(chunkTable);
+    wrapper.appendChild(section);
+  }
+
+  if (!totalCols) {
+    const empty = document.createElement('div');
+    empty.className = 'text-muted small';
+    empty.textContent = `No report columns found for export ${tableIndex + 1}.`;
+    wrapper.appendChild(empty);
+  }
+
+  return wrapper;
+}
+
+function captureWidgetSnapshot(card) {
+  if (!card || typeof html2canvas === 'undefined') {
+    return Promise.reject(new Error('Widget export is not available.'));
+  }
+
+  if (!card.querySelector('.widget-report-scroller')) {
+    return html2canvas(card, {
+      backgroundColor: getActiveTheme().dashboardBg,
+      scale: 1.5,
+      useCORS: true
+    });
+  }
+
+  const stage = document.createElement('div');
+  const width = Math.max(Math.ceil(card.getBoundingClientRect().width || 0), card.clientWidth || 0, 640);
+  stage.style.position = 'absolute';
+  stage.style.left = '-100000px';
+  stage.style.top = '0';
+  stage.style.width = `${width}px`;
+  stage.style.padding = '20px';
+  stage.style.background = getActiveTheme().dashboardBg;
+  stage.style.zIndex = '-1';
+
+  const clone = card.cloneNode(true);
+  clone.style.width = '100%';
+  clone.style.height = 'auto';
+  clone.style.minHeight = '0';
+  clone.querySelectorAll('.dropdown, .rename-control, .remove-control, .widget-theme-control, .ui-resizable-handle, [title="Download PNG"]').forEach(el => el.remove());
+
+  const body = clone.querySelector('.widget-body');
+  if (body) {
+    body.style.height = 'auto';
+    body.style.minHeight = '0';
+    body.style.overflow = 'visible';
+    body.style.paddingBottom = '0';
+  }
+
+  const scroller = clone.querySelector('.widget-report-scroller');
+  if (scroller) {
+    scroller.style.height = 'auto';
+    scroller.style.maxHeight = 'none';
+    scroller.style.overflow = 'visible';
+    const table = scroller.querySelector('table.widget-table');
+    if (table) {
+      scroller.innerHTML = '';
+      scroller.appendChild(buildExportFriendlyReportTable(table));
+    }
+  }
+
+  stage.appendChild(clone);
+  document.body.appendChild(stage);
+
+  return html2canvas(clone, {
+    backgroundColor: getActiveTheme().dashboardBg,
+    scale: 1.5,
+    useCORS: true,
+    windowWidth: Math.max(clone.scrollWidth, clone.offsetWidth),
+    windowHeight: Math.max(clone.scrollHeight, clone.offsetHeight)
+  }).finally(() => stage.remove());
+}
+
+function scaleCanvasForExport(canvas, maxWidth = 2200, maxHeight = 12000) {
+  const widthScale = maxWidth / canvas.width;
+  const heightScale = maxHeight / canvas.height;
+  const scale = Math.min(1, widthScale, heightScale);
+  if (!isFinite(scale) || scale >= 1) return canvas;
+
+  const scaled = document.createElement('canvas');
+  scaled.width = Math.max(1, Math.round(canvas.width * scale));
+  scaled.height = Math.max(1, Math.round(canvas.height * scale));
+  const ctx = scaled.getContext('2d');
+  ctx.drawImage(canvas, 0, 0, scaled.width, scaled.height);
+  return scaled;
+}
+
+function exportCanvasToPdf(pdf, canvas, marginMm = 8) {
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const contentWidth = pageWidth - marginMm * 2;
+  const contentHeight = pageHeight - marginMm * 2;
+  const sliceHeightPx = Math.max(1, Math.floor((canvas.width * contentHeight) / contentWidth));
+
+  let offsetY = 0;
+  let firstPage = true;
+
+  while (offsetY < canvas.height) {
+    const currentSliceHeight = Math.min(sliceHeightPx, canvas.height - offsetY);
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = currentSliceHeight;
+    const sliceCtx = sliceCanvas.getContext('2d');
+    sliceCtx.drawImage(
+      canvas,
+      0, offsetY, canvas.width, currentSliceHeight,
+      0, 0, canvas.width, currentSliceHeight
+    );
+
+    if (!firstPage) pdf.addPage();
+    firstPage = false;
+
+    const renderedHeight = (currentSliceHeight * contentWidth) / canvas.width;
+    pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', marginMm, marginMm, contentWidth, renderedHeight);
+    offsetY += currentSliceHeight;
+  }
 }
 
 function currentChatKey() {
@@ -1722,11 +1993,14 @@ function downloadWidget(wid, title) {
   // Fallback: html2canvas for tables / KPI cards
   const card = el.closest('.grid-stack-item-content');
   if (card && typeof html2canvas !== 'undefined') {
-    html2canvas(card).then(canvas => {
+    captureWidgetSnapshot(card).then(canvas => {
       const a = document.createElement('a');
       a.download = (title||'widget').replace(/[^\w]/g,'_') + '.png';
       a.href = canvas.toDataURL('image/png');
       a.click();
+    }).catch(err => {
+      console.error('Widget export failed:', err);
+      alert('Widget export failed. Please try again.');
     });
   }
 }
@@ -1755,33 +2029,17 @@ function newDashboard() {
 }
 
 function exportDashboard(format = 'png') {
-  captureDashboardSnapshot().then(canvas => {
+  captureDashboardSnapshot().then(rawCanvas => {
     const title = dashboards[activeDashboardId]?.title || 'dashboard';
     const safeTitle = title.replace(/[^\w]/g,'_');
+    const canvas = scaleCanvasForExport(rawCanvas);
 
     if (format === 'pdf') {
       if (!window.jspdf?.jsPDF) throw new Error('PDF export library is not loaded.');
       const { jsPDF } = window.jspdf;
       const orientation = canvas.width >= canvas.height ? 'landscape' : 'portrait';
       const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = pageWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-      const imageData = canvas.toDataURL('image/png');
-
-      pdf.addImage(imageData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imageData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-
+      exportCanvasToPdf(pdf, canvas, 8);
       pdf.save(`${safeTitle}.pdf`);
       return;
     }
@@ -2267,7 +2525,7 @@ function renderPlotlyChart(wid, comp) {
         const cols = d.columns || (d.rows?.length ? Object.keys(d.rows[0]) : []);
         const rows = d.rows || [];
         // Explicit height so table scroll area fills the widget-body exactly
-        el.innerHTML = `<div style="overflow:auto;height:${containerH}px;padding:8px 10px;background:var(--dashboard-surface);">
+        el.innerHTML = `<div class="widget-report-scroller" style="overflow:auto;height:${containerH}px;padding:8px 10px;background:var(--dashboard-surface);">
           <table class="widget-table mb-0">
             <thead>
               <tr>${cols.map(c=>`<th class="text-nowrap">${escapeHtml(String(c))}</th>`).join('')}</tr>
